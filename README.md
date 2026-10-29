@@ -131,9 +131,9 @@ curl -b jar -X POST localhost:8080/api/v1/pets/me/actions -d '{"action":"feed"}'
 ## Робота з Git
 
 - `main` — стабільна гілка; після початкового коміту прямі коміти в неї заборонені (branch protection).
-- Кожна задача з Jira виконується в окремій гілці: `feature/TAMA-<номер>-<коротка-назва>`, наприклад `feature/TAMA-11-lazy-recompute`, `feature/TAMA-5-web-skeleton`.
+- Кожна задача з Jira (проєкт `SCRUM`) виконується в окремій гілці: `feature/SCRUM-<номер>-<коротка-назва>`, наприклад `feature/SCRUM-32-lazy-recompute`, `feature/SCRUM-26-web-skeleton`.
 - Зміни потрапляють у `main` лише через pull request з рецензією щонайменше одного іншого учасника.
-- Повідомлення комітів — у наказовому способі з ключем задачі: `TAMA-11: add lazy pet state recomputation`.
+- Повідомлення комітів — у наказовому способі з ключем задачі: `SCRUM-32: add lazy pet state recomputation`.
 
 ## Ліцензія
 
