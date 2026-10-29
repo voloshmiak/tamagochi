@@ -1,0 +1,197 @@
+openapi: 3.0.3
+info:
+  title: Tamagotchi API
+  version: 0.1.0
+  description: |
+    Contract between the PWA and the Go backend (NFR-MNT-01).
+    Sessions use JWT in httpOnly cookies (`access_token`, `refresh_token`).
+servers:
+  - url: /api/v1
+security:
+  - cookieAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      security: []
+      summary: Register with email and password (FR-AUTH-01)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, nickname]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                nickname: { type: string, minLength: 3, maxLength: 20 }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      summary: Log in; sets session cookies (FR-AUTH-03)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      security: []
+      summary: Exchange the refresh cookie for new tokens
+      responses:
+        "204": { description: Cookies updated }
+        "401": { $ref: "#/components/responses/Error" }
+  /auth/logout:
+    post:
+      tags: [auth]
+      security: []
+      summary: Clear session cookies
+      responses:
+        "204": { description: Logged out }
+  /me:
+    get:
+      tags: [auth]
+      summary: Current user
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+
+  /pets:
+    post:
+      tags: [pets]
+      summary: Create the player's pet (FR-PET-01)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, appearance]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 20 }
+                appearance: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Pet" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+  /pets/me:
+    get:
+      tags: [pets]
+      summary: Pet with lazily recomputed state (FR-PET-02, FR-PET-04)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Pet" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /pets/me/actions:
+    post:
+      tags: [pets]
+      summary: Perform a care action; the client sends only the intent (FR-PET-03)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { $ref: "#/components/schemas/Action" }
+      responses:
+        "200":
+          description: Action applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pet: { $ref: "#/components/schemas/Pet" }
+                  points: { type: integer }
+                  reaction: { $ref: "#/components/schemas/Reaction" }
+                  usedItem: { $ref: "#/components/schemas/Item" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429":
+          description: Cooldown (FR-PET-05); see Retry-After header
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /inventory:
+    get:
+      tags: [pets]
+      summary: Items of the player (FR-PET-06)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inventory" } } } }
+
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: access_token }
+  responses:
+    Error:
+      description: Error
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: cooldown }
+        message: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        nickname: { type: string }
+        createdAt: { type: string, format: date-time }
+    Action:
+      type: string
+      enum: [feed, play, sleep, wash]
+    Pet:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        appearance: { type: string }
+        stats:
+          type: object
+          properties:
+            satiety: { type: integer, minimum: 0, maximum: 100 }
+            mood: { type: integer, minimum: 0, maximum: 100 }
+            energy: { type: integer, minimum: 0, maximum: 100 }
+            cleanliness: { type: integer, minimum: 0, maximum: 100 }
+        traits: { type: object, additionalProperties: { type: number } }
+        cooldowns:
+          type: object
+          description: Seconds until each action is available
+          additionalProperties: { type: integer }
+        updatedAt: { type: string, format: date-time }
+    Reaction:
+      type: object
+      properties:
+        event: { type: string }
+        emotion: { type: string, enum: [happy, calm, grumpy, shy] }
+        behavior: { type: string }
+        trait: { type: string }
+    Item:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [food, toy, soap] }
+    ItemCounts:
+      type: object
+      additionalProperties: { type: integer, minimum: 1 }
+    Inventory:
+      type: object
+      properties:
+        items: { $ref: "#/components/schemas/ItemCounts" }
