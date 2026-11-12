@@ -1,4 +1,4 @@
-.PHONY: run run-engine lint build web
+.PHONY: run run-engine lint build web up down
 
 run:
 	go run ./cmd/api
@@ -15,3 +15,9 @@ build:
 
 web:
 	cd web && npm run dev
+
+up:
+	docker compose up --build
+
+down:
+	docker compose down

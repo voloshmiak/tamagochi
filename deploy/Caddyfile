@@ -1,0 +1,16 @@
+# Локальне середовище: слухаємо http на :80 (без автоматичного HTTPS).
+# Для продакшну замініть :80 на доменне ім'я, Caddy сам отримає сертифікат.
+:80 {
+	encode gzip
+
+	@backend path /api/* /healthz
+	handle @backend {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
