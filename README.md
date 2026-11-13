@@ -108,6 +108,23 @@ npm run dev
 | `make web` | запустити фронтенд на :5173 |
 | `make build` | зібрати бінарні файли в `bin/` |
 | `make lint` | `gofmt` і `go vet` |
+| `make up` | `docker compose up --build` |
+| `make down` | `docker compose down` |
+
+### Запуск однією командою (Docker Compose)
+
+Потрібен лише Docker з Compose v2. Після клонування репозиторію:
+
+```bash
+docker compose up --build
+```
+
+Підіймаються чотири сервіси: `api`, `postgres`, `redis` і `caddy`. Застосунок доступний на http://localhost:8080 (порт змінюється через `CADDY_HTTP_PORT`). Caddy віддає зібраний фронтенд і проксіює `/api` та `/healthz` на `api`. Усі змінні мають значення за замовчуванням, тож файл `.env` для першого запуску не потрібен; за потреби скопіюйте `.env.example` у `.env`.
+
+```bash
+docker compose down        # зупинити
+docker compose down -v     # зупинити й видалити дані postgres/redis
+```
 
 Приклад запитів:
 
