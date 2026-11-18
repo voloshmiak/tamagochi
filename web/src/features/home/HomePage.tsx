@@ -6,6 +6,7 @@ import { PetFigure, type Feeling } from "../../components/PetFigure";
 import { Backpack } from "../../components/Backpack";
 import { Panel } from "../../components/Panel";
 import { DEMO } from "./demo";
+import { useUI, today } from "../../store/ui";
 
 const STAT_STYLE: Record<keyof Stats, { icon: string; bar: string }> = {
   satiety: { icon: "🍓", bar: "bg-coral" },
@@ -31,6 +32,7 @@ function feelingOf(stats: Stats): { feeling: Feeling; status: "great" | "ok" | "
 export function HomePage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const progressQuest = useUI((s) => s.progressQuest);
   const [reaction, setReaction] = useState<Reaction>();
   const pet = useQuery({
     queryKey: ["pet"],
@@ -40,7 +42,8 @@ export function HomePage() {
   });
   const act = useMutation({
     mutationFn: api.act,
-    onSuccess: (res) => {
+    onSuccess: (res, action) => {
+      progressQuest(action);
       qc.setQueryData(["pet"], res.pet);
       setReaction(res.reaction);
       void qc.invalidateQueries({ queryKey: ["inventory"] });
@@ -198,22 +201,38 @@ function Room({ pet, bubble }: { pet: Pet; bubble?: string }) {
 
 function Quests() {
   const { t } = useTranslation();
-  const done = DEMO.quests.filter((q) => "done" in q).length;
+  const { questDay, questProgress, chestClaimed, claimChest } = useUI();
+  const fresh = questDay === today();
+  const count = (key: string) => (fresh ? (questProgress[key] ?? 0) : 0);
+  const done = DEMO.quests.filter((q) => count(q.key) >= q.target).length;
+  const allDone = done === DEMO.quests.length;
+  const claimed = fresh && chestClaimed;
   return (
     <Panel title={`📋 ${t("quests.title")}`} aside={<span className="rounded-full bg-coral px-2.5 py-0.5 text-xs font-bold">{done} / {DEMO.quests.length}</span>}>
       <ul className="flex flex-col gap-2">
-        {DEMO.quests.map((q) => (
-          <li key={q.key} className="rounded-xl bg-canvas px-3 py-2 text-sm">
-            <div className="flex justify-between font-bold">
-              <span className={"done" in q ? "line-through opacity-70" : ""}>{t(`quests.${q.key}`)}</span>
-              <span className="text-coral-deep">+{q.reward} 🍓</span>
-            </div>
-            <div className="text-xs text-muted">{"done" in q ? "✓" : `${q.progress[0]} / ${q.progress[1]}`}</div>
-          </li>
-        ))}
+        {DEMO.quests.map((q) => {
+          const finished = count(q.key) >= q.target;
+          return (
+            <li key={q.key} className="rounded-xl bg-canvas px-3 py-2 text-sm">
+              <div className="flex justify-between font-bold">
+                <span className={finished ? "line-through opacity-70" : ""}>{t(`quests.${q.key}`)}</span>
+                <span className="text-coral-deep">+{q.reward} 🍓</span>
+              </div>
+              <div className="text-xs text-muted">{finished ? "✓" : `${count(q.key)} / ${q.target}`}</div>
+            </li>
+          );
+        })}
         <li className="flex items-center justify-between rounded-xl bg-coral/70 px-3 py-2 text-sm font-bold">
-          <span>🎁 {t("quests.chest")}<br /><span className="text-xs font-semibold opacity-80">{t("quests.chestHint")}</span></span>
-          <span className="rounded-full bg-white px-3 py-1">+{DEMO.chestReward}</span>
+          <span>
+            🎁 {t("quests.chest")}
+            <br />
+            <span className="text-xs font-semibold opacity-80">
+              {claimed ? t("quests.chestDone") : allDone ? t("quests.chestReady") : t("quests.chestHint")}
+            </span>
+          </span>
+          <button disabled={!allDone || claimed} onClick={claimChest} className="chunky bg-white px-3 py-1 text-sm [--edge:rgba(0,0,0,.15)]">
+            +{DEMO.chestReward}
+          </button>
         </li>
       </ul>
     </Panel>

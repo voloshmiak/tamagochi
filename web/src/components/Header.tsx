@@ -4,7 +4,7 @@ import { useUI, type Tab } from "../store/ui";
 
 const TABS: Tab[] = ["room", "shop", "play", "diary"];
 
-export function Header({ user, onLogout }: { user?: User; onLogout: () => void }) {
+export function Header({ user, hasPet, onLogout }: { user?: User; hasPet: boolean; onLogout: () => void }) {
   const { t, i18n } = useTranslation();
   const { tab, setTab, sound, toggleSound, berries } = useUI();
 
@@ -18,7 +18,7 @@ export function Header({ user, onLogout }: { user?: User; onLogout: () => void }
         </div>
       </div>
 
-      {user && (
+      {user && hasPet && (
         <nav aria-label="main" className="flex flex-wrap gap-1 rounded-full bg-lilac/40 p-1.5">
           {TABS.map((k) => (
             <button
@@ -34,7 +34,7 @@ export function Header({ user, onLogout }: { user?: User; onLogout: () => void }
       )}
 
       <div className="ml-auto flex items-center gap-3">
-        {user && (
+        {user && hasPet && (
           <span className="rounded-full bg-blush px-4 py-1.5 text-sm font-extrabold">
             🍓 {berries.toLocaleString(i18n.language)} <span className="text-xs font-bold text-muted">{t("common.berries")}</span>
           </span>
@@ -45,8 +45,8 @@ export function Header({ user, onLogout }: { user?: User; onLogout: () => void }
           onChange={(e) => void i18n.changeLanguage(e.target.value)}
           className="rounded-full bg-lilac/40 px-3 py-2 text-sm font-bold"
         >
-          <option value="uk">🇺🇦 UK</option>
-          <option value="en">🇬🇧 EN</option>
+          <option value="uk">UK</option>
+          <option value="en">EN</option>
         </select>
         <button
           onClick={toggleSound}

@@ -2,10 +2,10 @@
 // Replace with real queries when the corresponding API modules land.
 export const DEMO = {
   berries: 1450,
-  quests: [
-    { key: "feed", done: true, reward: 20 },
-    { key: "play", progress: [1, 2], reward: 35 },
-    { key: "wash", progress: [0, 1], reward: 40 },
+quests: [
+    { key: "feed", target: 1, reward: 20 },
+    { key: "play", target: 2, reward: 35 },
+    { key: "wash", target: 1, reward: 40 },
   ],
   chestReward: 100,
   week: [62, 74, 58, 81, 90, 77, 98],

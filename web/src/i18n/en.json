@@ -140,6 +140,7 @@
     "hideMiss": "Not here, try again"
   },
   "diary": {
+    "volume" : "Volume",
     "title": "Diary",
     "settings": "Settings",
     "language": "Language",

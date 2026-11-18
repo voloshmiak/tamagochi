@@ -80,6 +80,18 @@ export function DiaryPage() {
             </div>
           </div>
           <Toggle label={t("diary.sound")} on={ui.sound} onChange={ui.toggleSound} />
+                    <label className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2 text-sm font-bold">
+            {t("diary.volume")}
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={ui.volume}
+              onChange={(e) => ui.setVolume(Number(e.target.value))}
+              className="flex-1 accent-lilac-deep"
+            />
+          </label>
           <Toggle label={t("diary.notifications")} hint={t("diary.notificationsHint")} on={ui.notifications} onChange={ui.toggleNotifications} />
           <Toggle label={t("diary.quiet")} hint={t("diary.quietHint")} on={ui.quiet} onChange={ui.toggleQuiet} />
           {ui.quiet && (
