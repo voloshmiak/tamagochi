@@ -1,68 +1,43 @@
-:root {
-  font-family: system-ui, sans-serif;
-  color: #2b2118;
-  background: #fff8ee;
+@import "tailwindcss";
+@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/lora";
+
+@theme {
+  --font-sans: "Nunito Variable", system-ui, sans-serif;
+  --font-serif: "Lora Variable", Georgia, serif;
+  --color-canvas: #fbf7ff;
+  --color-ink: #3b2a2a;
+  --color-muted: #8a7a7a;
+  --color-coral: #ff9f86;
+  --color-coral-deep: #c4573a;
+  --color-blush: #ffd9d2;
+  --color-mint: #b9f0c9;
+  --color-mint-deep: #23804a;
+  --color-lilac: #d8c9ff;
+  --color-lilac-deep: #6a48c9;
+  --color-pink: #ffc2d6;
+  --color-cream: #fff4ea;
 }
 
-body {
-  margin: 0;
+@layer base {
+  body { @apply bg-canvas font-sans text-ink antialiased; }
+  h1, h2, h3 { @apply font-serif font-bold; }
+  :focus-visible { outline: 3px solid var(--color-lilac-deep); outline-offset: 2px; }
 }
 
-main {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 16px;
+@layer components {
+  .card { @apply rounded-[1.75rem] bg-white p-5 shadow-[0_8px_24px_-12px_rgba(106,72,201,.25)]; }
+  .chunky {
+    @apply inline-flex items-center gap-2 rounded-full px-4 py-2.5 font-extrabold text-ink transition-transform;
+    box-shadow: 0 4px 0 var(--edge, rgba(0, 0, 0, .18));
+  }
+  .chunky:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--edge, rgba(0, 0, 0, .18)); }
+  .chunky:disabled { @apply cursor-not-allowed opacity-55; }
+  .field { @apply w-full rounded-2xl border border-lilac bg-white px-4 py-2.5; }
 }
 
-header {
-  display: flex;
-  align-items: center;
+@keyframes fall {
+  from { top: -3rem; }
+  to { top: 100%; }
 }
-
-header h1 {
-  flex: 1;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 16px;
-  background: #fff;
-}
-
-input,
-button {
-  font: inherit;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #d9c6ad;
-}
-
-button {
-  background: #f4b860;
-  border: none;
-  cursor: pointer;
-}
-
-button.link {
-  background: none;
-  text-decoration: underline;
-}
-
-.stat {
-  display: grid;
-  grid-template-columns: 7rem 1fr;
-  align-items: center;
-}
-
-.actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-
-.error {
-  color: #b3261e;
-}
+.fall { animation: fall 3.2s linear forwards; }

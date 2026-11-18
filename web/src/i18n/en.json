@@ -1,0 +1,171 @@
+{
+  "brand": "Tamagochi",
+  "tagline": "A cozy little island",
+  "nav": {
+    "room": "Pet room",
+    "shop": "Shop & inventory",
+    "play": "Play room",
+    "diary": "Diary & settings"
+  },
+  "common": {
+    "logout": "Log out",
+    "soon": "This section is coming soon",
+    "language": "Language",
+    "sound": "Sound",
+    "berries": "berries",
+    "comingSoon": "Soon"
+  },
+  "auth": {
+    "title": "Welcome",
+    "email": "Email",
+    "password": "Password",
+    "nickname": "Nickname",
+    "login": "Log in",
+    "register": "Sign up",
+    "toRegister": "No account yet? Sign up",
+    "toLogin": "Already have an account? Log in"
+  },
+  "pet": {
+    "createTitle": "Meet your pet",
+    "name": "Pet name",
+    "create": "Create pet",
+    "loadError": "Couldn't load your pet",
+    "idle": "{{name}} is waiting for you!",
+    "appearance": {
+      "cat": "Cat"
+    },
+    "traits": "Personality",
+    "health": "Well-being",
+    "status": {
+      "great": "Great",
+      "ok": "Okay",
+      "bad": "Needs care"
+    }
+  },
+  "stats": {
+    "satiety": "Fullness",
+    "energy": "Energy",
+    "mood": "Happiness",
+    "cleanliness": "Cleanliness"
+  },
+  "actions": {
+    "feed": "Feed",
+    "play": "Play",
+    "wash": "Bathe",
+    "sleep": "Put to bed"
+  },
+  "cooldown": "{{s}}s left",
+  "bar": {
+    "room": "Room: Sunny living room",
+    "weather": "+10% happiness from weather",
+    "bond": "Bond: level 8",
+    "music": "Music: Lo-fi garden"
+  },
+  "quests": {
+    "title": "Daily quests",
+    "feed": "Feed a strawberry",
+    "play": "Play with a feather",
+    "wash": "Bathe in scented foam",
+    "chest": "Care chest",
+    "chestHint": "Finish all quests"
+  },
+  "backpack": {
+    "title": "Quick backpack",
+    "empty": "Empty for now: items will show up here",
+    "items": {
+      "apple": "Apple",
+      "fish": "Fish",
+      "ball": "Ball",
+      "soap": "Soap",
+      "pastel": "Pastel wallpaper",
+      "fern": "Potted fern"
+    }
+  },
+  "decor": {
+    "title": "Room decor",
+    "wallpaper": "Wallpaper",
+    "plants": "Plants",
+    "furniture": "Furniture"
+  },
+  "week": {
+    "title": "Care index this week",
+    "days": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ]
+  },
+  "footer": {
+    "rights": "© {{year}} Tamagochi. Your quiet island of joy and warmth.",
+    "love": "Made with love for cozy hearts"
+  },
+  "shop": {
+    "title": "Shop & inventory",
+    "catalog": "Catalog",
+    "buy": "Buy",
+    "decorItems": {
+      "pastel": "Pastel wallpaper",
+      "fern": "Potted fern"
+    },
+    "bought": "Bought: {{name}}",
+    "notEnough": "Not enough berries"
+  },
+  "play": {
+    "title": "Play room",
+    "friends": "Friends ranking",
+    "visit": "Visit",
+    "list": {
+      "berries": "Catch the berry",
+      "memo": "Memo",
+      "hide": "Hide & seek"
+    },
+    "desc": {
+      "berries": "Catch berries before they fall",
+      "memo": "Match pairs of favorite items",
+      "hide": "Find where your pet is hiding"
+    },
+    "start": "Play",
+    "back": "Back to games",
+    "score": "Score",
+    "sec": "s",
+    "reward": "Reward",
+    "again": "Play again",
+    "moves": "Moves",
+    "hidePrompt": "Where is your pet hiding?",
+    "hideFound": "Found it! 🎉",
+    "hideMiss": "Not here, try again"
+  },
+  "diary": {
+    "title": "Diary",
+    "settings": "Settings",
+    "language": "Language",
+    "sound": "In-game sound",
+    "notifications": "Notifications",
+    "notificationsHint": "We'll remind you when your pet is hungry",
+    "quiet": "Quiet hours",
+    "quietHint": "No notifications at night",
+    "entries": [
+      {
+        "when": "Today, 14:20",
+        "text": "Your pet ate a strawberry and purred happily."
+      },
+      {
+        "when": "Today, 11:05",
+        "text": "We played with a feather, plenty of energy left."
+      },
+      {
+        "when": "Yesterday, 21:40",
+        "text": "Your pet fell asleep sweetly in its room."
+      }
+    ],
+    "write": "New entry",
+    "placeholder": "What happened today?",
+    "add": "Save",
+    "from": "From",
+    "to": "To"
+  }
+}
