@@ -40,6 +40,19 @@
       "great": "Great",
       "ok": "Okay",
       "bad": "Needs care"
+    },
+    "behavior": {
+      "idle": "{{name}} is waiting for you!",
+      "want_eat": "{{name}} is hungry!",
+      "want_play": "Let's play!",
+      "want_sleep": "{{name}} wants to sleep…",
+      "want_wash": "Bath time!"
+    },
+    "traitNames": {
+      "playful": "playful",
+      "lazy": "lazy",
+      "glutton": "glutton",
+      "shy": "shy"
     }
   },
   "stats": {
@@ -67,7 +80,9 @@
     "play": "Play with a feather",
     "wash": "Bathe in scented foam",
     "chest": "Care chest",
-    "chestHint": "Finish all quests"
+    "chestHint": "Finish all quests",
+    "chestReady": "Claim your reward!",
+    "chestDone": "Reward claimed"
   },
   "backpack": {
     "title": "Quick backpack",
@@ -89,19 +104,11 @@
   },
   "week": {
     "title": "Care index this week",
-    "days": [
-      "Mon",
-      "Tue",
-      "Wed",
-      "Thu",
-      "Fri",
-      "Sat",
-      "Sun"
-    ]
+    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
   },
   "footer": {
     "rights": "© {{year}} Tamagochi. Your quiet island of joy and warmth.",
-    "love": "Made with love for cozy hearts"
+    "love": "Created by M. Voloshenko, O. Berezniatskyi, and P. Kertychak"
   },
   "shop": {
     "title": "Shop & inventory",
@@ -140,28 +147,19 @@
     "hideMiss": "Not here, try again"
   },
   "diary": {
-    "volume" : "Volume",
     "title": "Diary",
     "settings": "Settings",
     "language": "Language",
     "sound": "In-game sound",
+    "volume": "Volume",
     "notifications": "Notifications",
     "notificationsHint": "We'll remind you when your pet is hungry",
     "quiet": "Quiet hours",
     "quietHint": "No notifications at night",
     "entries": [
-      {
-        "when": "Today, 14:20",
-        "text": "Your pet ate a strawberry and purred happily."
-      },
-      {
-        "when": "Today, 11:05",
-        "text": "We played with a feather, plenty of energy left."
-      },
-      {
-        "when": "Yesterday, 21:40",
-        "text": "Your pet fell asleep sweetly in its room."
-      }
+      { "when": "Today, 14:20", "text": "Your pet ate a strawberry and purred happily." },
+      { "when": "Today, 11:05", "text": "We played with a feather, plenty of energy left." },
+      { "when": "Yesterday, 21:40", "text": "Your pet fell asleep sweetly in its room." }
     ],
     "write": "New entry",
     "placeholder": "What happened today?",

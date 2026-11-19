@@ -5,8 +5,8 @@ import { api, ApiError, type Action, type Pet, type Reaction, type Stats } from 
 import { PetFigure, type Feeling } from "../../components/PetFigure";
 import { Backpack } from "../../components/Backpack";
 import { Panel } from "../../components/Panel";
-import { DEMO } from "./demo";
 import { useUI, today } from "../../store/ui";
+import { DEMO } from "./demo";
 
 const STAT_STYLE: Record<keyof Stats, { icon: string; bar: string }> = {
   satiety: { icon: "🍓", bar: "bg-coral" },
@@ -64,7 +64,14 @@ export function HomePage() {
       </aside>
 
       <section className="flex flex-col gap-4">
-        <Room pet={pet.data} bubble={reaction?.behavior ?? reaction?.event} />
+        <Room
+          pet={pet.data}
+          bubble={
+            reaction
+              ? t(`pet.behavior.${reaction.behavior}`, { name: pet.data.name, defaultValue: t("pet.idle", { name: pet.data.name }) })
+              : undefined
+          }
+        />
         <div className="flex flex-wrap justify-center gap-2 rounded-full bg-white p-2 shadow-[0_8px_24px_-12px_rgba(106,72,201,.25)]">
           {ACTION_STYLE.map(({ action, icon, cls }) => {
             const wait = pet.data.cooldowns[action] ?? 0;
@@ -119,7 +126,9 @@ function PetCard({ pet }: { pet: Pet }) {
       {traits.length > 0 && (
         <ul aria-label={t("pet.traits")} className="flex flex-wrap gap-1.5">
           {traits.map(([k]) => (
-            <li key={k} className="rounded-full bg-lilac/50 px-3 py-0.5 text-xs font-bold text-lilac-deep">{k}</li>
+            <li key={k} className="rounded-full bg-lilac/50 px-3 py-0.5 text-xs font-bold text-lilac-deep">
+              {t(`pet.traitNames.${k}`, { defaultValue: k })}
+            </li>
           ))}
         </ul>
       )}
