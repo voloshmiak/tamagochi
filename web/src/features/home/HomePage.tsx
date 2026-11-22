@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, ApiError, type Action, type Pet, type Reaction, type Stats } from "../../api/client";
@@ -14,6 +14,8 @@ const STAT_STYLE: Record<keyof Stats, { icon: string; bar: string }> = {
   mood: { icon: "💖", bar: "bg-pink" },
   cleanliness: { icon: "🫧", bar: "bg-mint-deep" },
 };
+
+type Anim = { action: Action; id: number };
 
 const ACTION_STYLE: { action: Action; icon: string; cls: string }[] = [
   { action: "feed", icon: "🍰", cls: "bg-coral [--edge:#c4573a]" },
@@ -34,6 +36,9 @@ export function HomePage() {
   const qc = useQueryClient();
   const progressQuest = useUI((s) => s.progressQuest);
   const [reaction, setReaction] = useState<Reaction>();
+  const [anim, setAnim] = useState<Anim>();
+  const animTimer = useRef<number>();
+  useEffect(() => () => window.clearTimeout(animTimer.current), []);
   const pet = useQuery({
     queryKey: ["pet"],
     queryFn: api.myPet,
@@ -46,6 +51,9 @@ export function HomePage() {
       progressQuest(action);
       qc.setQueryData(["pet"], res.pet);
       setReaction(res.reaction);
+      setAnim({ action, id: Date.now() });
+      window.clearTimeout(animTimer.current);
+      animTimer.current = window.setTimeout(() => setAnim(undefined), 2800);
       void qc.invalidateQueries({ queryKey: ["inventory"] });
     },
   });
@@ -66,6 +74,7 @@ export function HomePage() {
       <section className="flex flex-col gap-4">
         <Room
           pet={pet.data}
+          anim={anim}
           bubble={
             reaction
               ? t(`pet.behavior.${reaction.behavior}`, { name: pet.data.name, defaultValue: t("pet.idle", { name: pet.data.name }) })
@@ -189,7 +198,7 @@ function WeekChart() {
   );
 }
 
-function Room({ pet, bubble }: { pet: Pet; bubble?: string }) {
+function Room({ pet, bubble, anim }: { pet: Pet; bubble?: string; anim?: Anim }) {
   const { t } = useTranslation();
   const { feeling } = feelingOf(pet.stats);
   return (
@@ -202,7 +211,7 @@ function Room({ pet, bubble }: { pet: Pet; bubble?: string }) {
         ✨ {bubble ?? t("pet.idle", { name: pet.name })}
       </div>
       <div className="absolute inset-x-0 bottom-[10%] flex justify-center">
-        <PetFigure feeling={feeling} label={pet.name} />
+        <PetFigure feeling={feeling} label={pet.name} action={anim?.action} runId={anim?.id} />
       </div>
     </div>
   );
