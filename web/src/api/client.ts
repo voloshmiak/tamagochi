@@ -1,12 +1,27 @@
-import createClient from "openapi-fetch";
-import type { components, paths } from "./schema";
+export type Action = "feed" | "play" | "sleep" | "wash";
 
-// Types come from api/openapi.yaml: run `npm run generate:api` after changing the contract.
-export type Pet = components["schemas"]["Pet"];
-export type User = components["schemas"]["User"];
-export type Action = components["schemas"]["Action"];
-export type Reaction = components["schemas"]["Reaction"];
-export type Stats = Pet["stats"];
+export interface Stats {
+  satiety: number;
+  mood: number;
+  energy: number;
+  cleanliness: number;
+}
+
+export interface Pet {
+  id: string;
+  name: string;
+  appearance: string;
+  stats: Stats;
+  traits: Record<string, number>;
+  cooldowns: Record<Action, number>;
+  updatedAt: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  nickname: string;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -18,25 +33,27 @@ export class ApiError extends Error {
   }
 }
 
-const http = createClient<paths>({ baseUrl: "/api/v1", credentials: "include" });
-
-async function unwrap<T>(req: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
-  const { data, error, response } = await req;
-  if (!response.ok) {
-    const e = (error ?? {}) as { error?: string; message?: string };
-    throw new ApiError(response.status, e.error ?? "unknown", e.message ?? response.statusText);
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch("/api/v1" + path, {
+    method,
+    credentials: "include",
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "unknown", message: res.statusText }));
+    throw new ApiError(res.status, err.error, err.message);
   }
-  return data as T;
+  return res.status === 204 ? (undefined as T) : res.json();
 }
 
 export const api = {
   register: (email: string, password: string, nickname: string) =>
-    unwrap(http.POST("/auth/register", { body: { email, password, nickname } })),
-  login: (email: string, password: string) => unwrap(http.POST("/auth/login", { body: { email, password } })),
-  logout: () => unwrap(http.POST("/auth/logout")),
-  me: () => unwrap(http.GET("/me")),
-  myPet: () => unwrap(http.GET("/pets/me")),
-  createPet: (name: string, appearance: string) => unwrap(http.POST("/pets", { body: { name, appearance } })),
-  act: (action: Action) => unwrap(http.POST("/pets/me/actions", { body: { action } })),
-  inventory: () => unwrap(http.GET("/inventory")),
+    request<User>("POST", "/auth/register", { email, password, nickname }),
+  login: (email: string, password: string) => request<User>("POST", "/auth/login", { email, password }),
+  logout: () => request<void>("POST", "/auth/logout"),
+  me: () => request<User>("GET", "/me"),
+  myPet: () => request<Pet>("GET", "/pets/me"),
+  createPet: (name: string, appearance: string) => request<Pet>("POST", "/pets", { name, appearance }),
+  act: (action: Action) => request<{ pet: Pet; points: number }>("POST", "/pets/me/actions", { action }),
 };
