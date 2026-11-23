@@ -35,7 +35,7 @@
       "cat": "Cat"
     },
     "traits": "Personality",
-        "state": { "happy": "Happy", "hungry": "Hungry", "sleepy": "Sleepy", "dirty": "Dirty" },
+    "state": { "happy": "Happy", "hungry": "Hungry", "sleepy": "Sleepy", "dirty": "Dirty" },
     "health": "Well-being",
     "status": {
       "great": "Great",

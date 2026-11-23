@@ -35,7 +35,7 @@
       "cat": "Кіт"
     },
     "traits": "Характер",
-        "state": { "happy": "Радіє", "hungry": "Голодний", "sleepy": "Сонний", "dirty": "Брудний" },
+    "state": { "happy": "Радіє", "hungry": "Голодний", "sleepy": "Сонний", "dirty": "Брудний" },
     "health": "Самопочуття",
     "status": {
       "great": "Чудово",
