@@ -42,7 +42,6 @@
 }
 .fall { animation: fall 3.2s linear forwards; }
 
-
 @keyframes breathe { 0%, 100% { scale: 1 1; } 50% { scale: 1.025 0.975; } }
 @keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -8px; } }
 @keyframes sag { 0%, 100% { scale: 1 1; } 50% { scale: 1.01 0.985; } }
