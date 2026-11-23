@@ -73,3 +73,27 @@
 @media (prefers-reduced-motion: reduce) {
   .pet, .particle { animation: none !important; }
 }
+
+/* Стани улюбленця: голодний, сонний, брудний (радіє = .pet-happy вище) */
+@keyframes growl { 0%, 78%, 100% { rotate: 0deg; } 84% { rotate: -2.5deg; } 90% { rotate: 2.5deg; } 96% { rotate: -2deg; } }
+@keyframes nod { 0%, 100% { rotate: 0deg; translate: 0 0; } 50% { rotate: 4deg; translate: 0 4px; } }
+@keyframes pulse { 0%, 100% { scale: 1; opacity: 0.8; } 50% { scale: 1.25; opacity: 1; } }
+@keyframes buzz {
+  0% { translate: -60px -10px; }
+  25% { translate: 0 -44px; }
+  50% { translate: 60px -10px; }
+  75% { translate: 0 18px; }
+  100% { translate: -60px -10px; }
+}
+
+.pet-hungry { animation: sag 2.4s ease-in-out infinite, growl 3.4s ease-in-out infinite; }
+.pet-sleepy { animation: nod 3.6s ease-in-out infinite; }
+.pet-dirty { animation: sag 4s ease-in-out infinite; }
+.state-icon { position: absolute; top: 2%; right: 8%; animation: pulse 1.4s ease-in-out infinite; }
+.fly { position: absolute; top: 32%; left: 50%; animation: buzz 3.2s ease-in-out infinite; }
+.particle-loop { animation-iteration-count: infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .state-icon, .fly { animation: none !important; }
+  .fly { translate: 50px -10px; }
+}

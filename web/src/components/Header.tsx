@@ -9,7 +9,7 @@ export function Header({ user, hasPet, onLogout }: { user?: User; hasPet: boolea
   const { tab, setTab, sound, toggleSound, berries } = useUI();
 
   return (
-    <header className="flex flex-wrap items-center gap-x-6 gap-y-3 bg-white/80 px-6 py-3 backdrop-blur">
+    <header className="flex flex-wrap items-center gap-x-6 gap-y-3 bg-white/80 px-4 py-3 backdrop-blur sm:px-6">
       <div className="flex items-center gap-3">
         <span aria-hidden className="grid size-10 place-items-center rounded-full bg-blush text-xl">🐾</span>
         <div className="leading-tight">
@@ -19,13 +19,13 @@ export function Header({ user, hasPet, onLogout }: { user?: User; hasPet: boolea
       </div>
 
       {user && hasPet && (
-        <nav aria-label="main" className="flex flex-wrap gap-1 rounded-full bg-lilac/40 p-1.5">
+        <nav aria-label="main" className="order-last flex w-full gap-1 overflow-x-auto rounded-full bg-lilac/40 p-1.5 lg:order-none lg:w-auto">
           {TABS.map((k) => (
             <button
               key={k}
               onClick={() => setTab(k)}
               aria-current={tab === k ? "page" : undefined}
-              className={`rounded-full px-5 py-2 text-sm font-bold ${tab === k ? "bg-coral shadow-[0_3px_0_rgba(0,0,0,.15)]" : "text-ink/80 hover:bg-white/60"}`}
+              className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold sm:px-5 ${tab === k ? "bg-coral shadow-[0_3px_0_rgba(0,0,0,.15)]" : "text-ink/80 hover:bg-white/60"}`}
             >
               {t(`nav.${k}`)}
             </button>
@@ -33,7 +33,7 @@ export function Header({ user, hasPet, onLogout }: { user?: User; hasPet: boolea
         </nav>
       )}
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2 sm:gap-3">
         {user && hasPet && (
           <span className="rounded-full bg-blush px-4 py-1.5 text-sm font-extrabold">
             🍓 {berries.toLocaleString(i18n.language)} <span className="text-xs font-bold text-muted">{t("common.berries")}</span>
@@ -57,8 +57,8 @@ export function Header({ user, hasPet, onLogout }: { user?: User; hasPet: boolea
           {sound ? "🔊" : "🔇"}
         </button>
         {user && (
-          <div className="flex items-center gap-3">
-            <span className="rounded-full bg-mint px-3 py-1 text-sm font-bold text-mint-deep">{user.nickname}</span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="max-w-[7rem] truncate rounded-full bg-mint px-3 py-1 text-sm font-bold text-mint-deep">{user.nickname}</span>
             <button className="text-sm font-bold text-coral-deep underline" onClick={onLogout}>
               {t("common.logout")}
             </button>
