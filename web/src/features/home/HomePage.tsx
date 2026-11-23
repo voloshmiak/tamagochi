@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, ApiError, type Action, type Pet, type Reaction, type Stats } from "../../api/client";
@@ -15,6 +15,8 @@ const STAT_STYLE: Record<keyof Stats, { icon: string; bar: string }> = {
   cleanliness: { icon: "🫧", bar: "bg-mint-deep" },
 };
 
+type Anim = { action: Action; id: number };
+
 const ACTION_STYLE: { action: Action; icon: string; cls: string }[] = [
   { action: "feed", icon: "🍰", cls: "bg-coral [--edge:#c4573a]" },
   { action: "play", icon: "🪶", cls: "bg-mint [--edge:#23804a]" },
@@ -22,11 +24,22 @@ const ACTION_STYLE: { action: Action; icon: string; cls: string }[] = [
   { action: "sleep", icon: "💤", cls: "bg-lilac-deep text-white [--edge:#3f2a85]" },
 ];
 
-function feelingOf(stats: Stats): { feeling: Feeling; status: "great" | "ok" | "bad" } {
+const LOW = 40; // нижче цього порогу показник вважається проблемою
+
+// 4 стани: радіє, голодний, сонний, брудний. Береться найнижчий із трьох показників.
+function feelingOf(stats: Stats): Feeling {
+  const needs: [Feeling, number][] = [
+    ["hungry", stats.satiety],
+    ["sleepy", stats.energy],
+    ["dirty", stats.cleanliness],
+  ];
+  const [state, value] = needs.reduce((lo, cur) => (cur[1] < lo[1] ? cur : lo));
+  return value < LOW ? state : "happy";
+}
+
+function statusOf(stats: Stats): "great" | "ok" | "bad" {
   const avg = (stats.satiety + stats.mood + stats.energy + stats.cleanliness) / 4;
-  if (avg >= 75) return { feeling: "happy", status: "great" };
-  if (avg >= 40) return { feeling: "ok", status: "ok" };
-  return { feeling: "sad", status: "bad" };
+  return avg >= 75 ? "great" : avg >= 40 ? "ok" : "bad";
 }
 
 export function HomePage() {
@@ -34,6 +47,9 @@ export function HomePage() {
   const qc = useQueryClient();
   const progressQuest = useUI((s) => s.progressQuest);
   const [reaction, setReaction] = useState<Reaction>();
+  const [anim, setAnim] = useState<Anim>();
+  const animTimer = useRef<number>();
+  useEffect(() => () => window.clearTimeout(animTimer.current), []);
   const pet = useQuery({
     queryKey: ["pet"],
     queryFn: api.myPet,
@@ -46,6 +62,9 @@ export function HomePage() {
       progressQuest(action);
       qc.setQueryData(["pet"], res.pet);
       setReaction(res.reaction);
+      setAnim({ action, id: Date.now() });
+      window.clearTimeout(animTimer.current);
+      animTimer.current = window.setTimeout(() => setAnim(undefined), 2800);
       void qc.invalidateQueries({ queryKey: ["inventory"] });
     },
   });
@@ -57,22 +76,23 @@ export function HomePage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)_300px]">
       <StatusBar />
-      <aside className="flex flex-col gap-6">
+      <aside className="order-2 flex flex-col gap-6 lg:order-none">
         <PetCard pet={pet.data} />
         <Vitals pet={pet.data} />
         <WeekChart />
       </aside>
 
-      <section className="flex flex-col gap-4">
+      <section className="order-1 flex flex-col gap-4 lg:order-none">
         <Room
           pet={pet.data}
+          anim={anim}
           bubble={
             reaction
               ? t(`pet.behavior.${reaction.behavior}`, { name: pet.data.name, defaultValue: t("pet.idle", { name: pet.data.name }) })
               : undefined
           }
         />
-        <div className="flex flex-wrap justify-center gap-2 rounded-full bg-white p-2 shadow-[0_8px_24px_-12px_rgba(106,72,201,.25)]">
+        <div className="flex flex-wrap justify-center gap-2 rounded-3xl bg-white p-2 shadow-[0_8px_24px_-12px_rgba(106,72,201,.25)] sm:rounded-full">
           {ACTION_STYLE.map(({ action, icon, cls }) => {
             const wait = pet.data.cooldowns[action] ?? 0;
             return (
@@ -87,7 +107,7 @@ export function HomePage() {
         {act.error instanceof ApiError && <p role="alert" className="text-center text-sm font-bold text-coral-deep">{act.error.message}</p>}
       </section>
 
-      <aside className="flex flex-col gap-6">
+      <aside className="order-3 flex flex-col gap-6 lg:order-none">
         <Quests />
         <Backpack />
         <Decor />
@@ -126,9 +146,7 @@ function PetCard({ pet }: { pet: Pet }) {
       {traits.length > 0 && (
         <ul aria-label={t("pet.traits")} className="flex flex-wrap gap-1.5">
           {traits.map(([k]) => (
-            <li key={k} className="rounded-full bg-lilac/50 px-3 py-0.5 text-xs font-bold text-lilac-deep">
-              {t(`pet.traitNames.${k}`, { defaultValue: k })}
-            </li>
+            <li key={k} className="rounded-full bg-lilac/50 px-3 py-0.5 text-xs font-bold text-lilac-deep">{t(`pet.traitNames.${k}`, { defaultValue: k })}</li>
           ))}
         </ul>
       )}
@@ -138,7 +156,7 @@ function PetCard({ pet }: { pet: Pet }) {
 
 function Vitals({ pet }: { pet: Pet }) {
   const { t } = useTranslation();
-  const { status } = feelingOf(pet.stats);
+  const status = statusOf(pet.stats);
   return (
     <div className="card flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -189,11 +207,11 @@ function WeekChart() {
   );
 }
 
-function Room({ pet, bubble }: { pet: Pet; bubble?: string }) {
+function Room({ pet, bubble, anim }: { pet: Pet; bubble?: string; anim?: Anim }) {
   const { t } = useTranslation();
-  const { feeling } = feelingOf(pet.stats);
+  const feeling = feelingOf(pet.stats);
   return (
-    <div className="relative h-[440px] overflow-hidden rounded-[2rem] shadow-[0_16px_32px_-16px_rgba(196,87,58,.5)]">
+    <div className="relative h-[380px] overflow-hidden rounded-[2rem] shadow-[0_16px_32px_-16px_rgba(196,87,58,.5)] sm:h-[440px]">
       <div className="absolute inset-0 bg-gradient-to-b from-[#ffe9df] to-[#ffd3c4]" />
       <div className="absolute inset-x-0 bottom-0 h-[34%] bg-[#e9cba9]" />
       <div aria-hidden className="absolute left-[8%] top-[12%] h-40 w-32 rounded-t-[4rem] border-[6px] border-white/80 bg-sky-100/80" />
@@ -202,8 +220,11 @@ function Room({ pet, bubble }: { pet: Pet; bubble?: string }) {
         ✨ {bubble ?? t("pet.idle", { name: pet.name })}
       </div>
       <div className="absolute inset-x-0 bottom-[10%] flex justify-center">
-        <PetFigure feeling={feeling} label={pet.name} />
+        <PetFigure feeling={feeling} label={pet.name} action={anim?.action} runId={anim?.id} />
       </div>
+      <p role="status" className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold">
+        {t(`pet.state.${feeling}`)}
+      </p>
     </div>
   );
 }
