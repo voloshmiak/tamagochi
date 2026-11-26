@@ -17,7 +17,7 @@ import (
 
 func New(cfg config.Config, c clock.Clock) http.Handler {
 	tokens := &auth.JWTIssuer{Secret: []byte(cfg.JWTSecret), AccessTTL: cfg.AccessTTL, RefreshTTL: cfg.RefreshTTL, Clock: c}
-	authSvc := auth.NewService(auth.NewMemoryUserRepository(), auth.BcryptHasher{}, tokens, auth.LogMailer{}, c)
+	authSvc := auth.NewService(auth.NewMemoryUserRepository(), auth.BcryptHasher{}, tokens, auth.LogMailer{}, auth.NewMemoryRefreshStore(c), c)
 
 	petSvc := pets.NewService(pets.Deps{
 		Pets:      pets.NewMemoryPetRepository(),

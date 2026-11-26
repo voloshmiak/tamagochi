@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+const (
+	MaxAccessTTL  = 15 * time.Minute
+	MaxRefreshTTL = 30 * 24 * time.Hour
+)
+
 type Config struct {
 	Env        string
 	Addr       string
@@ -35,6 +40,8 @@ func Load() (Config, error) {
 		}
 		c.BrainSeed = seed
 	}
+	checkTTL("ACCESS_TTL", c.AccessTTL, MaxAccessTTL, &errs)
+	checkTTL("REFRESH_TTL", c.RefreshTTL, MaxRefreshTTL, &errs)
 	if c.JWTSecret == "" {
 		if c.Env != "dev" {
 			errs = append(errs, errors.New("JWT_SECRET is required outside dev"))
@@ -45,7 +52,11 @@ func Load() (Config, error) {
 }
 
 func (c Config) SecureCookies() bool { return c.Env != "dev" }
-
+func checkTTL(key string, d, limit time.Duration, errs *[]error) {
+	if d <= 0 || d > limit {
+		*errs = append(*errs, fmt.Errorf("%s must be greater than 0 and at most %s, got %s", key, limit, d))
+	}
+}
 func duration(key string, def time.Duration, errs *[]error) time.Duration {
 	v := os.Getenv(key)
 	if v == "" {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/voloshmiak/tamagochi/internal/platform/id"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
@@ -43,11 +44,12 @@ const (
 	typeRefresh = "refresh"
 )
 
-func (j *JWTIssuer) sign(userID, typ string, ttl time.Duration) (string, time.Time, error) {
+func (j *JWTIssuer) sign(userID, typ, tokenID string, ttl time.Duration) (string, time.Time, error) {
 	now := j.Clock.Now()
 	exp := now.Add(ttl)
 	c := claims{Type: typ, RegisteredClaims: jwt.RegisteredClaims{
 		Subject:   userID,
+		ID:        tokenID,
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(exp),
 	}}
@@ -58,32 +60,45 @@ func (j *JWTIssuer) sign(userID, typ string, ttl time.Duration) (string, time.Ti
 func (j *JWTIssuer) Issue(userID string) (Tokens, error) {
 	var t Tokens
 	var err error
-	if t.Access, t.AccessExpires, err = j.sign(userID, typeAccess, j.AccessTTL); err != nil {
+	if t.Access, t.AccessExpires, err = j.sign(userID, typeAccess, "", j.AccessTTL); err != nil {
 		return Tokens{}, err
 	}
-	if t.Refresh, t.RefreshExpires, err = j.sign(userID, typeRefresh, j.RefreshTTL); err != nil {
+	t.RefreshID = id.New()
+	if t.Refresh, t.RefreshExpires, err = j.sign(userID, typeRefresh, t.RefreshID, j.RefreshTTL); err != nil {
 		return Tokens{}, err
 	}
 	return t, nil
 }
 
-func (j *JWTIssuer) verify(token, typ string) (string, error) {
+func (j *JWTIssuer) verify(token, typ string) (claims, error) {
 	var c claims
 	_, err := jwt.ParseWithClaims(token, &c, func(*jwt.Token) (any, error) { return j.Secret, nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithTimeFunc(j.Clock.Now))
 	if err != nil {
-		return "", err
+		return claims{}, err
 	}
 	if c.Type != typ {
-		return "", errors.New("wrong token type")
+		return claims{}, errors.New("wrong token type")
 	}
-	return c.Subject, nil
+	return c, nil
 }
 
-func (j *JWTIssuer) VerifyAccess(token string) (string, error) { return j.verify(token, typeAccess) }
+func (j *JWTIssuer) VerifyAccess(token string) (string, error) {
+	c, err := j.verify(token, typeAccess)
+	return c.Subject, err
+}
 
-func (j *JWTIssuer) VerifyRefresh(token string) (string, error) { return j.verify(token, typeRefresh) }
+func (j *JWTIssuer) VerifyRefresh(token string) (string, string, error) {
+	c, err := j.verify(token, typeRefresh)
+	if err != nil {
+		return "", "", err
+	}
+	if c.ID == "" {
+		return "", "", errors.New("refresh token without id")
+	}
+	return c.Subject, c.ID, nil
+}
 
 type LogMailer struct{}
 

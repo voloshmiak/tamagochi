@@ -1,11 +1,13 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/voloshmiak/tamagochi/internal/platform/apperr"
 	"github.com/voloshmiak/tamagochi/internal/platform/httpx"
 )
 
@@ -86,6 +88,9 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := h.svc.Refresh(r.Context(), c.Value)
 	if err != nil {
+		if errors.Is(err, apperr.ErrUnauthorized) {
+			h.clearCookies(w)
+		}
 		httpx.Error(w, r, err)
 		return
 	}
@@ -93,11 +98,21 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) logout(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(refreshCookie); err == nil {
+		if err := h.svc.Logout(r.Context(), c.Value); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+	}
+	h.clearCookies(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) clearCookies(w http.ResponseWriter) {
 	for _, name := range []string{httpx.AccessCookie, refreshCookie} {
 		http.SetCookie(w, h.cookie(name, "", time.Unix(0, 0)))
 	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {

@@ -18,7 +18,31 @@ export class ApiError extends Error {
   }
 }
 
-const http = createClient<paths>({ baseUrl: "/api/v1", credentials: "include" });
+const AUTH_PATHS = ["/auth/login", "/auth/register", "/auth/refresh", "/auth/logout"];
+
+let inflightRefresh: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  if (!inflightRefresh) {
+    inflightRefresh = fetch("/api/v1/auth/refresh", { method: "POST", credentials: "include" })
+        .then((res) => res.ok)
+        .catch(() => false)
+        .finally(() => {
+          inflightRefresh = null;
+        });
+  }
+  return inflightRefresh;
+}
+
+async function fetchWithRefresh(input: Request): Promise<Response> {
+  const retry = input.clone();
+  const res = await fetch(input);
+  const { pathname } = new URL(input.url);
+  if (res.status !== 401 || AUTH_PATHS.some((p) => pathname.endsWith(p))) return res;
+  return (await refreshSession()) ? fetch(retry) : res;
+}
+
+const http = createClient<paths>({ baseUrl: "/api/v1", credentials: "include", fetch: fetchWithRefresh });
 
 async function unwrap<T>(req: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   const { data, error, response } = await req;

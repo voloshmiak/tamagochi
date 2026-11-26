@@ -14,11 +14,12 @@ type Service struct {
 	hasher PasswordHasher
 	tokens TokenIssuer
 	mailer Mailer
+	store  RefreshStore
 	clock  clock.Clock
 }
 
-func NewService(users UserRepository, hasher PasswordHasher, tokens TokenIssuer, mailer Mailer, c clock.Clock) *Service {
-	return &Service{users: users, hasher: hasher, tokens: tokens, mailer: mailer, clock: c}
+func NewService(users UserRepository, hasher PasswordHasher, tokens TokenIssuer, mailer Mailer, store RefreshStore, c clock.Clock) *Service {
+	return &Service{users: users, hasher: hasher, tokens: tokens, mailer: mailer, store: store, clock: c}
 }
 
 func (s *Service) Register(ctx context.Context, in RegisterInput) (User, error) {
@@ -55,18 +56,67 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Toke
 		return User{}, Tokens{}, ErrInvalidCredentials
 	}
 	t, err := s.tokens.Issue(u.ID)
-	return u, t, err
+	if err != nil {
+		return User{}, Tokens{}, err
+	}
+	if err := s.store.Save(ctx, refreshRecord(t, u.ID, id.New())); err != nil {
+		return User{}, Tokens{}, err
+	}
+	return u, t, nil
 }
 
 func (s *Service) Refresh(ctx context.Context, refresh string) (Tokens, error) {
-	userID, err := s.tokens.VerifyRefresh(refresh)
+	userID, tokenID, err := s.tokens.VerifyRefresh(refresh)
 	if err != nil {
+		return Tokens{}, ErrInvalidCredentials
+	}
+	rec, err := s.store.Consume(ctx, tokenID)
+	if errors.Is(err, ErrRefreshUsed) {
+		if err := s.store.RevokeSession(ctx, tokenID); err != nil {
+			return Tokens{}, err
+		}
+		return Tokens{}, ErrInvalidCredentials
+	}
+	if isRefreshRejected(err) {
+		return Tokens{}, ErrInvalidCredentials
+	}
+	if err != nil {
+		return Tokens{}, err
+	}
+	if rec.UserID != userID {
 		return Tokens{}, ErrInvalidCredentials
 	}
 	if _, err := s.users.ByID(ctx, userID); err != nil {
 		return Tokens{}, ErrInvalidCredentials
 	}
-	return s.tokens.Issue(userID)
+	t, err := s.tokens.Issue(userID)
+	if err != nil {
+		return Tokens{}, err
+	}
+	err = s.store.Save(ctx, refreshRecord(t, userID, rec.FamilyID))
+	if isRefreshRejected(err) {
+		return Tokens{}, ErrInvalidCredentials
+	}
+	if err != nil {
+		return Tokens{}, err
+	}
+	return t, nil
+}
+
+func (s *Service) Logout(ctx context.Context, refresh string) error {
+	_, tokenID, err := s.tokens.VerifyRefresh(refresh)
+	if err != nil {
+		return nil
+	}
+	return s.store.RevokeSession(ctx, tokenID)
+}
+
+func refreshRecord(t Tokens, userID, familyID string) RefreshRecord {
+	return RefreshRecord{ID: t.RefreshID, FamilyID: familyID, UserID: userID, ExpiresAt: t.RefreshExpires}
+}
+
+func isRefreshRejected(err error) bool {
+	return errors.Is(err, ErrRefreshUnknown) || errors.Is(err, ErrRefreshUsed) || errors.Is(err, ErrRefreshRevoked)
 }
 
 func (s *Service) User(ctx context.Context, userID string) (User, error) {

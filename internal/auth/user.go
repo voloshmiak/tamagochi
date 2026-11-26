@@ -65,13 +65,14 @@ type Tokens struct {
 	Access         string
 	AccessExpires  time.Time
 	Refresh        string
+	RefreshID      string
 	RefreshExpires time.Time
 }
 
 type TokenIssuer interface {
 	Issue(userID string) (Tokens, error)
 	VerifyAccess(token string) (userID string, err error)
-	VerifyRefresh(token string) (userID string, err error)
+	VerifyRefresh(token string) (userID string, tokenID string, err error)
 }
 
 type Mailer interface {
