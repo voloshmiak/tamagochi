@@ -2,27 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Panel } from "../../components/Panel";
 import { useUI } from "../../store/ui";
-
-function Toggle({ label, hint, on, onChange }: { label: string; hint?: string; on: boolean; onChange: () => void }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl bg-canvas px-3 py-2">
-      <span className="text-sm font-bold">
-        {label}
-        {hint && <span className="block text-xs font-normal text-muted">{hint}</span>}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label={label}
-        onClick={onChange}
-        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? "bg-mint-deep" : "bg-lilac"}`}
-      >
-        <span className={`absolute top-1 size-5 rounded-full bg-white transition-all ${on ? "left-6" : "left-1"}`} />
-      </button>
-    </div>
-  );
-}
+import { NotificationSettings, Toggle } from "../notifications/NotificationSettings";
 
 export function DiaryPage() {
   const { t, i18n } = useTranslation();
@@ -80,7 +60,7 @@ export function DiaryPage() {
             </div>
           </div>
           <Toggle label={t("diary.sound")} on={ui.sound} onChange={ui.toggleSound} />
-                    <label className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2 text-sm font-bold">
+          <label className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2 text-sm font-bold">
             {t("diary.volume")}
             <input
               type="range"
@@ -92,14 +72,7 @@ export function DiaryPage() {
               className="flex-1 accent-lilac-deep"
             />
           </label>
-          <Toggle label={t("diary.notifications")} hint={t("diary.notificationsHint")} on={ui.notifications} onChange={ui.toggleNotifications} />
-          <Toggle label={t("diary.quiet")} hint={t("diary.quietHint")} on={ui.quiet} onChange={ui.toggleQuiet} />
-          {ui.quiet && (
-            <div className="grid grid-cols-2 gap-2 text-sm font-bold">
-              <label>{t("diary.from")}<input type="time" className="field mt-1" value={ui.quietFrom} onChange={(e) => ui.setQuietHours(e.target.value, ui.quietTo)} /></label>
-              <label>{t("diary.to")}<input type="time" className="field mt-1" value={ui.quietTo} onChange={(e) => ui.setQuietHours(ui.quietFrom, e.target.value)} /></label>
-            </div>
-          )}
+          <NotificationSettings />
         </Panel>
       </aside>
     </div>

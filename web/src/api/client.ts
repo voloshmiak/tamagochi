@@ -6,12 +6,17 @@ export type User = components["schemas"]["User"];
 export type Action = components["schemas"]["Action"];
 export type Reaction = components["schemas"]["Reaction"];
 export type Stats = Pet["stats"];
+export type AuthProvider = components["schemas"]["AuthProvider"];
+export type NotificationKind = components["schemas"]["NotificationKind"];
+export type NotificationPreferences = components["schemas"]["NotificationPreferences"];
+export type PushSubscriptionBody = components["schemas"]["PushSubscription"];
 
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly retryAfter = 0,
   ) {
     super(message);
   }
@@ -47,7 +52,8 @@ async function unwrap<T>(req: Promise<{ data?: T; error?: unknown; response: Res
   const { data, error, response } = await req;
   if (!response.ok) {
     const e = (error ?? {}) as { error?: string; message?: string };
-    throw new ApiError(response.status, e.error ?? "unknown", e.message ?? response.statusText);
+    const retryAfter = Number(response.headers.get("Retry-After") ?? 0) || 0;
+    throw new ApiError(response.status, e.error ?? "unknown", e.message ?? response.statusText, retryAfter);
   }
   return data as T;
 }
@@ -63,4 +69,12 @@ export const api = {
   act: (action: Action) => unwrap(http.POST("/pets/me/actions", { body: { action } })),
   inventory: () => unwrap(http.GET("/inventory")),
   claimDailyReward: () => unwrap(http.POST("/inventory/daily-reward")),
+  authProviders: () => unwrap(http.GET("/auth/providers")),
+  pushKey: () => unwrap(http.GET("/notifications/push-key")),
+  subscribePush: (body: PushSubscriptionBody) => unwrap(http.POST("/notifications/subscriptions", { body })),
+  unsubscribePush: (endpoint: string) => unwrap(http.DELETE("/notifications/subscriptions", { body: { endpoint } })),
+  notificationPreferences: () => unwrap(http.GET("/notifications/preferences")),
+  setNotificationPreferences: (body: NotificationPreferences) => unwrap(http.PUT("/notifications/preferences", { body })),
 };
+
+export const oauthStartURL = (provider: AuthProvider) => `/api/v1/auth/oauth/${provider}`;

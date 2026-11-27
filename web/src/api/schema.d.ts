@@ -55,6 +55,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** OAuth providers enabled on this server (FR-AUTH-02) */
+        get: operations["listAuthProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/oauth/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Redirect to the provider's consent page (FR-AUTH-02) */
+        get: operations["startOAuth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/oauth/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provider redirects back here; logs in or creates the account (FR-AUTH-02) */
+        get: operations["oauthCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/refresh": {
         parameters: {
             query?: never;
@@ -191,6 +242,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/push-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** VAPID public key for PushManager.subscribe (FR-NOT-01) */
+        get: operations["getPushKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save the browser's push subscription after the player agreed (FR-NOT-01) */
+        post: operations["subscribePush"];
+        /** Remove the push subscription of this browser (FR-NOT-01) */
+        delete: operations["unsubscribePush"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Notification kinds and quiet hours (FR-NOT-04) */
+        get: operations["getNotificationPreferences"];
+        /** Change notification kinds and quiet hours (FR-NOT-04) */
+        put: operations["setNotificationPreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -209,6 +313,11 @@ export interface components {
         LoginRequest: {
             email: string;
             password: string;
+        };
+        /** @enum {string} */
+        AuthProvider: "google" | "github";
+        AuthProviders: {
+            providers: components["schemas"]["AuthProvider"][];
         };
         User: {
             id: string;
@@ -287,6 +396,44 @@ export interface components {
             granted: components["schemas"]["ItemCounts"];
             inventory: components["schemas"]["Inventory"];
         };
+        PushKey: {
+            /** @description VAPID public key (base64url); empty when push is off */
+            publicKey: string;
+            enabled: boolean;
+        };
+        PushSubscription: {
+            /** Format: uri */
+            endpoint: string;
+            expirationTime?: number | null;
+            keys: {
+                p256dh: string;
+                auth: string;
+            };
+        };
+        PushUnsubscribe: {
+            endpoint: string;
+        };
+        /** @enum {string} */
+        NotificationKind: "low_stat" | "friend_request" | "trade";
+        /** @example 23:00 */
+        ClockTime: string;
+        QuietHours: {
+            enabled: boolean;
+            from: components["schemas"]["ClockTime"];
+            to: components["schemas"]["ClockTime"];
+        };
+        NotificationPreferences: {
+            /** @description Kinds the player turned off */
+            disabled: components["schemas"]["NotificationKind"][];
+            quietHours: components["schemas"]["QuietHours"];
+            /**
+             * @description IANA time zone of the player
+             * @example Europe/Kyiv
+             */
+            timezone: string;
+            /** @enum {string} */
+            lang: "uk" | "en";
+        };
     };
     responses: {
         /** @description Error */
@@ -298,7 +445,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Too early (cooldown or reward already claimed); see the Retry-After header */
+        /** @description Too early (cooldown, reward already claimed or rate limit); see the Retry-After header */
         RetryLater: {
             headers: {
                 /** @description Seconds to wait */
@@ -310,7 +457,9 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        Provider: components["schemas"]["AuthProvider"];
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -388,6 +537,74 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
+            429: components["responses"]["RetryLater"];
+        };
+    };
+    listAuthProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthProviders"];
+                };
+            };
+        };
+    };
+    startOAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["parameters"]["Provider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the provider */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    oauthCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path: {
+                provider: components["parameters"]["Provider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the app; `?oauth=error` or `?oauth=denied` when the login failed */
+            303: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     refresh: {
@@ -575,6 +792,123 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             429: components["responses"]["RetryLater"];
+        };
+    };
+    getPushKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushKey"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    subscribePush: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscription"];
+            };
+        };
+        responses: {
+            /** @description Subscribed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    unsubscribePush: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushUnsubscribe"];
+            };
+        };
+        responses: {
+            /** @description Unsubscribed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    getNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    setNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferences"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
         };
     };
 }

@@ -4,6 +4,19 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    target: "es2020",
+    cssCodeSplit: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          query: ["@tanstack/react-query", "openapi-fetch", "zustand"],
+          i18n: ["i18next", "i18next-browser-languagedetector", "react-i18next"],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
