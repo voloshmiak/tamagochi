@@ -24,9 +24,8 @@ const ACTION_STYLE: { action: Action; icon: string; cls: string }[] = [
   { action: "sleep", icon: "💤", cls: "bg-lilac-deep text-white [--edge:#3f2a85]" },
 ];
 
-const LOW = 40; // нижче цього порогу показник вважається проблемою
+const LOW = 40;
 
-// 4 стани: радіє, голодний, сонний, брудний. Береться найнижчий із трьох показників.
 function feelingOf(stats: Stats): Feeling {
   const needs: [Feeling, number][] = [
     ["hungry", stats.satiety],

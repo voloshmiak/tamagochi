@@ -1,6 +1,22 @@
-# Локальне середовище: слухаємо http на :80 (без автоматичного HTTPS).
-# Для продакшну замініть :80 на доменне ім'я, Caddy сам отримає сертифікат.
-:80 {
+# Увесь трафік іде по HTTPS (NFR-SEC-01).
+#
+# SITE_ADDRESS — доменне ім'я сайту. Локально це localhost, і Caddy випускає
+# сертифікат власним CA (TLS_ISSUER=internal). У продакшні вкажіть домен і
+# email для ACME, наприклад TLS_ISSUER=admin@example.com: Caddy сам отримає
+# сертифікат Let's Encrypt.
+{$SITE_ADDRESS:localhost} {
+	tls {$TLS_ISSUER:internal} {
+		protocols tls1.2 tls1.3
+	}
+
+	header {
+		# HSTS: браузер ходить лише по HTTPS протягом року, включно з піддоменами.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
 	encode gzip
 
 	@backend path /api/* /healthz
@@ -13,4 +29,10 @@
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# HTTP лише перенаправляє на HTTPS. PUBLIC_URL враховує зовнішній порт,
+# якщо 443 на хості зайнятий (наприклад, https://localhost:8443).
+http://{$SITE_ADDRESS:localhost} {
+	redir {$PUBLIC_URL:https://localhost}{uri} 308
 }

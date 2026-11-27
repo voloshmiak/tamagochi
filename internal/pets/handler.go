@@ -5,8 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/voloshmiak/tamagochi/internal/api/oapi"
 	"github.com/voloshmiak/tamagochi/internal/brain"
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
 	"github.com/voloshmiak/tamagochi/internal/platform/httpx"
@@ -19,52 +18,52 @@ type Handler struct {
 
 func NewHandler(svc *Service, c clock.Clock) *Handler { return &Handler{svc: svc, clock: c} }
 
-func (h *Handler) Routes(r chi.Router) {
-	r.Post("/pets", h.create)
-	r.Get("/pets/me", h.get)
-	r.Post("/pets/me/actions", h.perform)
-	r.Get("/inventory", h.inventory)
-}
-
-type StatsView struct {
-	Satiety     int `json:"satiety"`
-	Mood        int `json:"mood"`
-	Energy      int `json:"energy"`
-	Cleanliness int `json:"cleanliness"`
-}
-
-type PetView struct {
-	ID         string         `json:"id"`
-	Name       string         `json:"name"`
-	Appearance string         `json:"appearance"`
-	Stats      StatsView      `json:"stats"`
-	Traits     brain.Traits   `json:"traits"`
-	Cooldowns  map[Action]int `json:"cooldowns"`
-	UpdatedAt  time.Time      `json:"updatedAt"`
-}
-
-func NewPetView(p *Pet, rules Rules, now time.Time) PetView {
+func NewPetView(p *Pet, rules Rules, now time.Time) oapi.Pet {
 	r := func(v float64) int { return int(math.Round(v)) }
-	cd := make(map[Action]int, len(rules))
+	cd := make(map[string]int, len(rules))
 	for a, rule := range rules {
-		cd[a] = int(math.Ceil(p.CooldownLeft(rule, now).Seconds()))
+		cd[string(a)] = int(math.Ceil(p.CooldownLeft(rule, now).Seconds()))
 	}
-	return PetView{
-		ID:         p.ID,
+	traits := make(map[string]float32, len(p.Traits))
+	for t, w := range p.Traits {
+		traits[string(t)] = float32(w)
+	}
+	return oapi.Pet{
+		Id:         p.ID,
 		Name:       p.Name,
 		Appearance: p.Appearance,
-		Stats:      StatsView{r(p.Stats.Satiety), r(p.Stats.Mood), r(p.Stats.Energy), r(p.Stats.Cleanliness)},
-		Traits:     p.Traits,
-		Cooldowns:  cd,
-		UpdatedAt:  p.UpdatedAt,
+		Stage:      oapi.Stage(p.Stage(now)),
+		Stats: oapi.Stats{
+			Satiety:     r(p.Stats.Satiety),
+			Mood:        r(p.Stats.Mood),
+			Energy:      r(p.Stats.Energy),
+			Cleanliness: r(p.Stats.Cleanliness),
+		},
+		Traits:    traits,
+		Cooldowns: cd,
+		BornAt:    p.BornAt,
+		UpdatedAt: p.UpdatedAt,
 	}
 }
 
-func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name       string `json:"name"`
-		Appearance string `json:"appearance"`
+func newInventoryView(inv *Inventory, now time.Time) oapi.Inventory {
+	return oapi.Inventory{
+		Items:         inv.Counts(),
+		DailyRewardIn: int(math.Ceil(inv.DailyRewardIn(now).Seconds())),
 	}
+}
+
+func reactionView(r brain.Reaction) oapi.Reaction {
+	return oapi.Reaction{
+		Event:    string(r.Event),
+		Emotion:  oapi.ReactionEmotion(r.Emotion),
+		Behavior: string(r.Behavior),
+		Trait:    string(r.Trait),
+	}
+}
+
+func (h *Handler) CreatePet(w http.ResponseWriter, r *http.Request) {
+	var req oapi.CreatePetJSONRequestBody
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -77,7 +76,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusCreated, NewPetView(pet, h.svc.Rules(), h.clock.Now()))
 }
 
-func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetMyPet(w http.ResponseWriter, r *http.Request) {
 	pet, err := h.svc.Get(r.Context(), httpx.UserID(r.Context()))
 	if err != nil {
 		httpx.Error(w, r, err)
@@ -86,32 +85,45 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, NewPetView(pet, h.svc.Rules(), h.clock.Now()))
 }
 
-func (h *Handler) perform(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Action Action `json:"action"`
-	}
+func (h *Handler) PerformAction(w http.ResponseWriter, r *http.Request) {
+	var req oapi.PerformActionJSONRequestBody
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	res, err := h.svc.Perform(r.Context(), httpx.UserID(r.Context()), req.Action)
+	res, err := h.svc.Perform(r.Context(), httpx.UserID(r.Context()), Action(req.Action))
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, struct {
-		Pet      PetView        `json:"pet"`
-		Points   int            `json:"points"`
-		Reaction brain.Reaction `json:"reaction"`
-		Used     *Item          `json:"usedItem,omitempty"`
-	}{NewPetView(res.Pet, h.svc.Rules(), h.clock.Now()), res.Points, res.Reaction, res.Used})
+	out := oapi.ActionResult{
+		Pet:      NewPetView(res.Pet, h.svc.Rules(), h.clock.Now()),
+		Points:   res.Points,
+		Reaction: reactionView(res.Reaction),
+	}
+	if res.Used != nil {
+		out.UsedItem = &oapi.Item{Id: res.Used.ID, Name: res.Used.Name, Kind: oapi.ItemKind(res.Used.Kind)}
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
-func (h *Handler) inventory(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {
 	inv, err := h.svc.Inventory(r.Context(), httpx.UserID(r.Context()))
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]map[string]int{"items": inv.Items})
+	httpx.JSON(w, http.StatusOK, newInventoryView(inv, h.clock.Now()))
+}
+
+func (h *Handler) ClaimDailyReward(w http.ResponseWriter, r *http.Request) {
+	granted, inv, err := h.svc.ClaimDailyReward(r.Context(), httpx.UserID(r.Context()))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, oapi.DailyReward{
+		Granted:   granted,
+		Inventory: newInventoryView(inv, h.clock.Now()),
+	})
 }

@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Action } from "../api/client";
 
-// Стан улюбленця визначається показниками: найнижчий із ситості/енергії/чистоти нижче порогу, інакше радіє.
 export type Feeling = "happy" | "hungry" | "sleepy" | "dirty";
 
 const INK = "#3b2a2a";
@@ -81,7 +80,6 @@ export function PetFigure({ feeling, label, action, runId }: { feeling: Feeling;
         </svg>
       </div>
 
-      {/* Постійні індикатори стану (коли немає анімації дії) */}
       {!action && feeling === "hungry" && <span aria-hidden className="state-icon text-3xl">🍓</span>}
       {!action && feeling === "sleepy" && (
         <>

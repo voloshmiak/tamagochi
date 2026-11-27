@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
+	"github.com/voloshmiak/tamagochi/internal/platform/id"
 )
 
 type BcryptHasher struct{ Cost int }
@@ -43,11 +43,12 @@ const (
 	typeRefresh = "refresh"
 )
 
-func (j *JWTIssuer) sign(userID, typ string, ttl time.Duration) (string, time.Time, error) {
+func (j *JWTIssuer) sign(userID, typ, tokenID string, ttl time.Duration) (string, time.Time, error) {
 	now := j.Clock.Now()
 	exp := now.Add(ttl)
 	c := claims{Type: typ, RegisteredClaims: jwt.RegisteredClaims{
 		Subject:   userID,
+		ID:        tokenID,
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(exp),
 	}}
@@ -58,38 +59,44 @@ func (j *JWTIssuer) sign(userID, typ string, ttl time.Duration) (string, time.Ti
 func (j *JWTIssuer) Issue(userID string) (Tokens, error) {
 	var t Tokens
 	var err error
-	if t.Access, t.AccessExpires, err = j.sign(userID, typeAccess, j.AccessTTL); err != nil {
+	if t.Access, t.AccessExpires, err = j.sign(userID, typeAccess, "", j.AccessTTL); err != nil {
 		return Tokens{}, err
 	}
-	if t.Refresh, t.RefreshExpires, err = j.sign(userID, typeRefresh, j.RefreshTTL); err != nil {
+	t.RefreshID = id.New()
+	if t.Refresh, t.RefreshExpires, err = j.sign(userID, typeRefresh, t.RefreshID, j.RefreshTTL); err != nil {
 		return Tokens{}, err
 	}
 	return t, nil
 }
 
-func (j *JWTIssuer) verify(token, typ string) (string, error) {
+func (j *JWTIssuer) verify(token, typ string) (claims, error) {
 	var c claims
 	_, err := jwt.ParseWithClaims(token, &c, func(*jwt.Token) (any, error) { return j.Secret, nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithTimeFunc(j.Clock.Now))
 	if err != nil {
-		return "", err
+		return claims{}, err
 	}
 	if c.Type != typ {
-		return "", errors.New("wrong token type")
+		return claims{}, errors.New("wrong token type")
 	}
-	return c.Subject, nil
+	return c, nil
 }
 
-func (j *JWTIssuer) VerifyAccess(token string) (string, error) { return j.verify(token, typeAccess) }
+func (j *JWTIssuer) VerifyAccess(token string) (string, error) {
+	c, err := j.verify(token, typeAccess)
+	return c.Subject, err
+}
 
-func (j *JWTIssuer) VerifyRefresh(token string) (string, error) { return j.verify(token, typeRefresh) }
-
-type LogMailer struct{}
-
-func (LogMailer) SendVerification(ctx context.Context, email, token string) error {
-	slog.InfoContext(ctx, "verification email", "to", email, "token", token)
-	return nil
+func (j *JWTIssuer) VerifyRefresh(token string) (string, string, error) {
+	c, err := j.verify(token, typeRefresh)
+	if err != nil {
+		return "", "", err
+	}
+	if c.ID == "" {
+		return "", "", errors.New("refresh token without id")
+	}
+	return c.Subject, c.ID, nil
 }
 
 type MemoryUserRepository struct {
@@ -125,6 +132,18 @@ func (r *MemoryUserRepository) ByID(_ context.Context, id string) (User, error) 
 	return User{}, ErrUserNotFound
 }
 
+func (r *MemoryUserRepository) MarkEmailVerified(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.users[id]
+	if !ok {
+		return ErrUserNotFound
+	}
+	u.EmailVerified = true
+	r.users[id] = u
+	return nil
+}
+
 func (r *MemoryUserRepository) find(match func(User) bool) (User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -146,4 +165,31 @@ func (r *MemoryUserRepository) ByNickname(_ context.Context, nickname string) (U
 		return User{}, fmt.Errorf("%w (nickname %q)", err, nickname)
 	}
 	return u, nil
+}
+
+type MemoryVerificationRepository struct {
+	mu     sync.Mutex
+	byHash map[string]Verification
+}
+
+func NewMemoryVerificationRepository() *MemoryVerificationRepository {
+	return &MemoryVerificationRepository{byHash: make(map[string]Verification)}
+}
+
+func (r *MemoryVerificationRepository) Save(_ context.Context, v Verification) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byHash[v.TokenHash] = v
+	return nil
+}
+
+func (r *MemoryVerificationRepository) Consume(_ context.Context, tokenHash string) (Verification, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, ok := r.byHash[tokenHash]
+	if !ok {
+		return Verification{}, ErrVerificationInvalid
+	}
+	delete(r.byHash, tokenHash)
+	return v, nil
 }

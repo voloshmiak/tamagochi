@@ -1,0 +1,21 @@
+# Генерація типобезпечного коду доступу до PostgreSQL (pgx/v5): make sqlc
+version: "2"
+sql:
+  - engine: postgresql
+    schema: internal/platform/pg/migrations
+    queries: internal/platform/pg/queries
+    gen:
+      go:
+        package: pgdb
+        out: internal/platform/pg/pgdb
+        sql_package: pgx/v5
+        emit_empty_slices: true
+        overrides:
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true

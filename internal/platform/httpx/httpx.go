@@ -90,9 +90,13 @@ type TokenVerifier interface {
 
 const AccessCookie = "access_token"
 
-func Authenticate(v TokenVerifier) func(http.Handler) http.Handler {
+func Authenticate(v TokenVerifier, isPublic func(r *http.Request) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isPublic(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			token := ""
 			if c, err := r.Cookie(AccessCookie); err == nil {
 				token = c.Value

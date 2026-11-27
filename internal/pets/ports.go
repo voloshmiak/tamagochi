@@ -23,6 +23,7 @@ type PetRepository interface {
 
 type InventoryRepository interface {
 	Get(ctx context.Context, ownerID string) (*Inventory, error)
+	GetForUpdate(ctx context.Context, ownerID string) (*Inventory, error)
 	Save(ctx context.Context, inv *Inventory) error
 }
 

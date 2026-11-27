@@ -87,6 +87,8 @@
   },
   "backpack": {
     "title": "Quick backpack",
+    "dailyReward": "Claim the daily reward",
+    "dailyRewardDone": "Daily reward claimed, come back tomorrow",
     "empty": "Empty for now: items will show up here",
     "items": {
       "apple": "Apple",

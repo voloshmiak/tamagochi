@@ -1,5 +1,3 @@
-// Placeholder data for widgets that have no backend yet (quests, balance, weekly index).
-// Replace with real queries when the corresponding API modules land.
 export const DEMO = {
   berries: 1450,
 quests: [

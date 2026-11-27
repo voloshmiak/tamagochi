@@ -1,10 +1,14 @@
 openapi: 3.0.3
 info:
   title: Tamagotchi API
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    Contract between the PWA and the Go backend (NFR-MNT-01).
-    Sessions use JWT in httpOnly cookies (`access_token`, `refresh_token`).
+    Contract between the PWA and the Go backend (NFR-MNT-01). This file is the single
+    source of truth: the Go server interface (`internal/api/oapi`) and the TypeScript
+    client types (`web/src/api/schema.d.ts`) are generated from it (`make generate`).
+    Requests are validated against it before they reach the handlers.
+
+    Sessions use JWT in httpOnly cookies (`access_token`, `refresh_token`), NFR-SEC-03.
 servers:
   - url: /api/v1
 security:
@@ -13,26 +17,38 @@ security:
 paths:
   /auth/register:
     post:
+      operationId: register
       tags: [auth]
       security: []
-      summary: Register with email and password (FR-AUTH-01)
+      summary: Register with email and password; sends a verification email (FR-AUTH-01)
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [email, password, nickname]
-              properties:
-                email: { type: string, format: email }
-                password: { type: string, minLength: 8 }
-                nickname: { type: string, minLength: 3, maxLength: 20 }
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
       responses:
         "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
         "400": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /auth/verify:
+    get:
+      operationId: verifyEmail
+      tags: [auth]
+      security: []
+      summary: Confirm the email address with the token from the verification email (FR-AUTH-01)
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "303":
+          description: Redirect to the app; `?verified=1` on success, `?verified=0` otherwise
+          headers:
+            Location: { schema: { type: string } }
   /auth/login:
     post:
+      operationId: login
       tags: [auth]
       security: []
       summary: Log in; sets session cookies (FR-AUTH-03)
@@ -40,98 +56,97 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email: { type: string }
-                password: { type: string }
+            schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
   /auth/refresh:
     post:
+      operationId: refresh
       tags: [auth]
       security: []
-      summary: Exchange the refresh cookie for new tokens
+      summary: Rotate the refresh cookie and issue a new access cookie (FR-AUTH-03, NFR-SEC-03)
       responses:
         "204": { description: Cookies updated }
         "401": { $ref: "#/components/responses/Error" }
   /auth/logout:
     post:
+      operationId: logout
       tags: [auth]
       security: []
-      summary: Clear session cookies
+      summary: Revoke the refresh session and clear the cookies
       responses:
         "204": { description: Logged out }
   /me:
     get:
+      operationId: getMe
       tags: [auth]
       summary: Current user
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "401": { $ref: "#/components/responses/Error" }
 
   /pets:
     post:
+      operationId: createPet
       tags: [pets]
       summary: Create the player's pet (FR-PET-01)
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [name, appearance]
-              properties:
-                name: { type: string, minLength: 2, maxLength: 20 }
-                appearance: { type: string }
+            schema: { $ref: "#/components/schemas/CreatePetRequest" }
       responses:
         "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Pet" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
   /pets/me:
     get:
+      operationId: getMyPet
       tags: [pets]
-      summary: Pet with lazily recomputed state (FR-PET-02, FR-PET-04)
+      summary: Pet with lazily recomputed stats and its stage (FR-PET-02, FR-PET-04)
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Pet" } } } }
+        "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
   /pets/me/actions:
     post:
+      operationId: performAction
       tags: [pets]
       summary: Perform a care action; the client sends only the intent (FR-PET-03)
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [action]
-              properties:
-                action: { $ref: "#/components/schemas/Action" }
+            schema: { $ref: "#/components/schemas/ActionRequest" }
       responses:
-        "200":
-          description: Action applied
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  pet: { $ref: "#/components/schemas/Pet" }
-                  points: { type: integer }
-                  reaction: { $ref: "#/components/schemas/Reaction" }
-                  usedItem: { $ref: "#/components/schemas/Item" }
-        "409": { $ref: "#/components/responses/Error" }
-        "429":
-          description: Cooldown (FR-PET-05); see Retry-After header
-          headers:
-            Retry-After: { schema: { type: integer } }
+        "200": { description: Action applied, content: { application/json: { schema: { $ref: "#/components/schemas/ActionResult" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The action needs an item the player does not have (FR-PET-06)
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { $ref: "#/components/responses/RetryLater" }
   /inventory:
     get:
+      operationId: getInventory
       tags: [pets]
-      summary: Items of the player (FR-PET-06)
+      summary: Items of the player and the daily reward status (FR-PET-06)
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inventory" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+  /inventory/daily-reward:
+    post:
+      operationId: claimDailyReward
+      tags: [pets]
+      summary: Claim the daily reward; available once per calendar day, UTC (FR-PET-06)
+      responses:
+        "200": { description: Reward granted, content: { application/json: { schema: { $ref: "#/components/schemas/DailyReward" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RetryLater" }
 
 components:
   securitySchemes:
@@ -140,50 +155,107 @@ components:
     Error:
       description: Error
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    RetryLater:
+      description: Too early (cooldown or reward already claimed); see the Retry-After header
+      headers:
+        Retry-After: { description: Seconds to wait, schema: { type: integer } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
     Error:
       type: object
+      required: [error, message]
       properties:
         error: { type: string, example: cooldown }
         message: { type: string }
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, nickname]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 72 }
+        nickname: { type: string, minLength: 3, maxLength: 20 }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
     User:
       type: object
+      required: [id, email, nickname, emailVerified, createdAt]
       properties:
         id: { type: string }
         email: { type: string }
         nickname: { type: string }
+        emailVerified: { type: boolean }
         createdAt: { type: string, format: date-time }
+
+    CreatePetRequest:
+      type: object
+      additionalProperties: false
+      required: [name, appearance]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 20 }
+        appearance: { type: string, minLength: 1, maxLength: 32 }
     Action:
       type: string
       enum: [feed, play, sleep, wash]
+    ActionRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: { $ref: "#/components/schemas/Action" }
+    Stage:
+      type: string
+      description: Growth stage, derived from the pet's age (FR-PET-02)
+      enum: [egg, baby, child, teen, adult]
+    Stats:
+      type: object
+      required: [satiety, mood, energy, cleanliness]
+      properties:
+        satiety: { type: integer, minimum: 0, maximum: 100 }
+        mood: { type: integer, minimum: 0, maximum: 100 }
+        energy: { type: integer, minimum: 0, maximum: 100 }
+        cleanliness: { type: integer, minimum: 0, maximum: 100 }
     Pet:
       type: object
+      required: [id, name, appearance, stage, stats, traits, cooldowns, bornAt, updatedAt]
       properties:
         id: { type: string }
         name: { type: string }
         appearance: { type: string }
-        stats:
-          type: object
-          properties:
-            satiety: { type: integer, minimum: 0, maximum: 100 }
-            mood: { type: integer, minimum: 0, maximum: 100 }
-            energy: { type: integer, minimum: 0, maximum: 100 }
-            cleanliness: { type: integer, minimum: 0, maximum: 100 }
+        stage: { $ref: "#/components/schemas/Stage" }
+        stats: { $ref: "#/components/schemas/Stats" }
         traits: { type: object, additionalProperties: { type: number } }
         cooldowns:
           type: object
           description: Seconds until each action is available
           additionalProperties: { type: integer }
+        bornAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     Reaction:
       type: object
+      required: [event, emotion, behavior, trait]
       properties:
         event: { type: string }
         emotion: { type: string, enum: [happy, calm, grumpy, shy] }
         behavior: { type: string }
         trait: { type: string }
+    ActionResult:
+      type: object
+      required: [pet, points, reaction]
+      properties:
+        pet: { $ref: "#/components/schemas/Pet" }
+        points: { type: integer }
+        reaction: { $ref: "#/components/schemas/Reaction" }
+        usedItem: { $ref: "#/components/schemas/Item" }
     Item:
       type: object
+      required: [id, name, kind]
       properties:
         id: { type: string }
         name: { type: string }
@@ -193,5 +265,16 @@ components:
       additionalProperties: { type: integer, minimum: 1 }
     Inventory:
       type: object
+      required: [items, dailyRewardIn]
       properties:
         items: { $ref: "#/components/schemas/ItemCounts" }
+        dailyRewardIn:
+          type: integer
+          minimum: 0
+          description: Seconds until the daily reward can be claimed; 0 means it is available now
+    DailyReward:
+      type: object
+      required: [granted, inventory]
+      properties:
+        granted: { $ref: "#/components/schemas/ItemCounts" }
+        inventory: { $ref: "#/components/schemas/Inventory" }
