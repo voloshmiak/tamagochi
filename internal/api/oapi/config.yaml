@@ -1,4 +1,3 @@
-# oapi-codegen: Go-типи, інтерфейс сервера (chi) і вбудована специфікація з api/openapi.yaml.
 package: oapi
 output: api.gen.go
 generate:
