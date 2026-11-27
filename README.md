@@ -4,17 +4,18 @@
 
 Проєкт виконується в межах дисципліни «Життєвий цикл програмного забезпечення» (КПІ ім. Ігоря Сікорського, ФІОТ).
 
-> **Стан:** інтегрована система (лабораторна робота №5). Компоненти спринту 1 з'єднані в одне ціле: фронтенд → Caddy (HTTPS) → Go API → PostgreSQL і Redis. Дані зберігаються в PostgreSQL, схема створюється версійованими міграціями goose під час старту API, refresh-сесії лежать у Redis, листи підтвердження email надсилаються через SMTP (локально це Mailpit). Контракт API описано в OpenAPI: з нього генеруються інтерфейс Go-сервера, TS-типи клієнта, і за ним перевіряється кожен запит. Модулі наступних спринтів (`social`, `trade`, `leaderboard`, `notify`, `replica`) поки мають лише сутності, порти й сигнатури сервісів; їхні методи повертають `apperr.ErrNotImplemented`.
+> **Стан:** спринт 2. До інтегрованої системи спринту 1 додано фоновий процес `pet-engine` (asynq поверх Redis, повтори з експоненційною затримкою, черга невдалих задач, метрики), Web Push зі згодою гравця, налаштуваннями типів сповіщень, тихими годинами й лімітом 5 на добу, вхід через Google і GitHub (OAuth 2.0 + PKCE), rate limit і захист від перебору паролів у Redis, CSRF-захист і CSP, атомарні операції з інвентарем для обміну, stateless-API (дві репліки за Caddy) і розбиття фронтенду на чанки. Модулі `social`, `trade` (сервіс), `leaderboard`, `replica` чекають своїх спринтів; їхні методи повертають `apperr.ErrNotImplemented`.
 
 ## Стек
 
 | Рівень | Технології |
 |---|---|
 | Бекенд | Go 1.26, chi, oapi-codegen + kin-openapi (валідація за OpenAPI), JWT (golang-jwt), bcrypt |
-| Дані | PostgreSQL 17 (pgx/v5, sqlc, міграції goose), Redis 7 (go-redis: refresh-сесії) |
+| Дані | PostgreSQL 17 (pgx/v5, sqlc, міграції goose), Redis 7 (go-redis: refresh-сесії, rate limit, pub/sub, черга asynq) |
+| Фонові задачі | asynq (pet-engine), Web Push (webpush-go, VAPID), OAuth 2.0 (golang.org/x/oauth2) |
 | Фронтенд | React 18, Vite, TypeScript, Tailwind, TanStack Query, Zustand, i18next, openapi-fetch + openapi-typescript |
 | Інфраструктура | Docker Compose, Caddy 2 (HTTPS, HSTS), Mailpit (локальна пошта), GitHub Actions |
-| Заплановано | asynq, WebSocket, Web Push |
+| Заплановано | WebSocket |
 
 ## Архітектура
 
@@ -29,10 +30,11 @@ tamagochi/
 ├── cmd/
 │   ├── api/                 # точка входу HTTP-сервера
 │   ├── migrate/             # застосування міграцій без запуску API
-│   └── pet-engine/          # точка входу фонового воркера (LLM, push, обміни)
+│   └── pet-engine/          # фоновий воркер asynq; підкоманди ping і vapid
 ├── internal/
 │   ├── api/oapi/            # код, згенерований з api/openapi.yaml (oapi-codegen)
-│   ├── app/                 # composition root: вибір адаптерів, роутер
+│   ├── app/                 # composition root: вибір адаптерів, роутер, воркер
+│   ├── engine/              # обробники задач pet-engine, нотифікатор після COMMIT
 │   ├── config/              # налаштування зі змінних середовища
 │   ├── auth/                # реєстрація, вхід, JWT        (FR-AUTH)
 │   ├── pets/                # улюбленець, дії, інвентар     (FR-PET)
@@ -40,17 +42,19 @@ tamagochi/
 │   ├── social/              # друзі, блокування             (FR-SOC)
 │   ├── trade/               # обмін предметами              (FR-TR)
 │   ├── leaderboard/         # очки та рейтинги              (FR-LB)
-│   ├── notify/              # Web Push, тихі години         (FR-NOT)
+│   ├── notify/              # Web Push, тихі години, ліміт  (FR-NOT)
 │   ├── replica/             # репліки улюбленця через LLM   (FR-LLM)
-│   ├── realtime/            # контракт WebSocket/pub-sub    (FR-SOC-04)
-│   ├── queue/               # контракт черги задач API → pet-engine
+│   ├── realtime/            # pub/sub у Redis для WebSocket (FR-SOC-04)
+│   ├── queue/               # черга задач: asynq, in-memory, метрики
 │   └── platform/            # спільні компоненти
 │       ├── apperr/          #   категорії помилок
 │       ├── clock/           #   абстракція часу
 │       ├── httpx/           #   JSON, мапінг помилок, middleware автентифікації
 │       ├── id/              #   генерація ідентифікаторів
 │       ├── pg/              #   PostgreSQL: пул, TxManager, міграції, запити sqlc
-│       └── tx/              #   інтерфейс TxManager (межа транзакції)
+│       ├── ratelimit/       #   лічильники з вікном (Redis / пам'ять)
+│       ├── text/            #   перевірка тексту від користувача
+│       └── tx/              #   TxManager і хуки після COMMIT
 ├── api/openapi.yaml         # контракт API (NFR-MNT-01)
 ├── deploy/                  # Caddyfile і образ Caddy зі зібраним фронтендом
 ├── web/                     # фронтенд (React + Vite + TS)
@@ -78,13 +82,16 @@ tamagochi/
 | platform/pg | `TxManager` | транзакція pgx у контексті; репозиторії приєднуються до неї | ✅ |
 | brain | `UtilityBrain`, `Consideration` (+ 4 реалізації), `Traits` | вибір поведінки, детермінізм через seed | ✅ |
 | trade | `Offer` | пропозиція обміну та її стани | ✅ |
-| trade | `Service`, `InventoryPort`, `IdempotencyStore` | атомарний обмін | заглушки |
+| trade | `Service`, `IdempotencyStore` | сценарії обміну | заглушки |
+| pets | `Service.ReserveItems`, `ReleaseItems`, `ExchangeItems` | реалізація `trade.InventoryPort`: атомарно, з блокуванням інвентарів у сталому порядку | ✅ |
 | social | `Relation`, `Service`, `Repository` | дружба, блокування | заглушки |
 | leaderboard | `Entry`, `Service`, `Store` | рейтинги | заглушки |
-| notify | `Notification`, `Subscription`, `Service`, `Sender`, `Store` | push-сповіщення | заглушки |
+| notify | `Service`, `Preferences`, `SubscriptionStore`, `PreferenceStore`, `Sender` | підписки, типи, тихі години, ліміт 5/добу, видалення підписки на 410 | ✅ + PostgreSQL, Redis, Web Push та in-memory адаптери |
+| auth | `OAuthProvider`, `IdentityRepository`, `LoginGuard` | вхід через Google/GitHub, 5 невдалих входів за 15 хв | ✅ |
+| engine | `Engine`, `Notifier` | задачі `system:ping`, `pet:low-stat-check`, `notify:send`; постановка в чергу після COMMIT | ✅ |
 | replica | `Service`, `Provider` (LLMProvider), `Cache`, `Quota`, `Templates` | репліки через LLM | заглушки |
-| realtime | `Broker`, `Message` | події в реальному часі | контракт |
-| queue | `Task`, `Enqueuer`, `Registrar` | фонові задачі | контракт |
+| realtime | `Broker`, `RedisBroker`, `MemoryBroker` | події в реальному часі | ✅ брокер; WebSocket — далі |
+| queue | `Task`, `AsynqEnqueuer`, `Worker`, `Memory`, `Metrics` | фонові задачі | ✅ |
 
 ### Принципи SOLID у коді
 
@@ -99,8 +106,10 @@ tamagochi/
 ```
 Браузер (PWA)  ──HTTPS──▶  Caddy  ──/api/*, /healthz──▶  Go API  ──▶  PostgreSQL  (користувачі, улюбленці, інвентар)
      ▲                       │                              │
-     └── статика web/dist ◀──┘                              ├──▶  Redis       (refresh-сесії)
-                                                            └──▶  SMTP        (листи підтвердження; локально Mailpit)
+     └── статика web/dist ◀──┘        (2 репліки)           ├──▶  Redis       (сесії, rate limit, pub/sub, черга)
+                                                            ├──▶  SMTP        (листи підтвердження; локально Mailpit)
+                                                            └──▶  Google / GitHub (OAuth)
+                         Redis (asynq) ──▶ pet-engine ──▶ PostgreSQL; ──▶ Web Push (FCM, Mozilla, Apple)
 ```
 
 | Межа | Як взаємодіють | Де в коді |
@@ -110,6 +119,9 @@ tamagochi/
 | API: контракт | Маршрути беруться з `oapi.ServerInterface`, згенерованого з контракту. Кожен запит спершу проходить JWT-middleware (публічні операції визначаються за `security: []` у специфікації), потім валідацію за схемою (400 з поясненням) | [internal/app/app.go](internal/app/app.go), [internal/platform/httpx/openapi.go](internal/platform/httpx/openapi.go) |
 | API ↔ PostgreSQL | pgx-пул; типобезпечні запити згенеровані sqlc з [internal/platform/pg/queries](internal/platform/pg/queries). `pg.TxManager` кладе транзакцію в контекст, а дія над улюбленцем блокує його рядок через `SELECT … FOR UPDATE` | [internal/platform/pg](internal/platform/pg), [internal/pets/postgres.go](internal/pets/postgres.go), [internal/auth/postgres.go](internal/auth/postgres.go) |
 | API ↔ Redis | Refresh-сесії: кожен токен має запис з TTL, а Lua-скрипти атомарно позначають використання й відкликають усю сесію при повторному використанні токена | [internal/auth/refresh_redis.go](internal/auth/refresh_redis.go) |
+| API → pet-engine | API ставить задачі в asynq (Redis): перевірку показника на момент перетину 20 і push про друзів/обміни лише після COMMIT транзакції. Воркер повторює задачу до 5 спроб із затримкою 10 с × 2ⁿ, далі вона потрапляє в архів (чергу невдалих). Метрики — `GET :9090/metrics` | [internal/engine](internal/engine), [internal/queue](internal/queue), [internal/platform/tx/tx.go](internal/platform/tx/tx.go) |
+| pet-engine ↔ Web Push | Повідомлення шифруються й підписуються VAPID; відповідь 404/410 видаляє підписку | [internal/notify/webpush.go](internal/notify/webpush.go), [web/public/sw.js](web/public/sw.js) |
+| API ↔ Google/GitHub | Authorization Code + PKCE; `state` і verifier лежать у підписаному HMAC cookie, тож будь-яка репліка завершує вхід | [internal/auth/oauth.go](internal/auth/oauth.go), [internal/auth/oauth_handler.go](internal/auth/oauth_handler.go) |
 | API ↔ SMTP | Після реєстрації надсилається лист із посиланням `PUBLIC_URL/api/v1/auth/verify?token=…`; без `SMTP_ADDR` посилання пишеться в лог | [internal/auth/mail.go](internal/auth/mail.go) |
 
 Адаптери обирає лише composition root ([internal/app](internal/app/app.go)): з `DATABASE_URL` використовується PostgreSQL, з `REDIS_URL` — Redis, без них дані зберігаються в пам'яті процесу. Код модулів від цього вибору не залежить.
@@ -126,6 +138,9 @@ erDiagram
     pets ||--|{ pet_traits : "характер"
     inventories ||--o{ inventory_items : "містить"
     items ||--o{ inventory_items : "предмет"
+    users ||--o{ user_identities : "входить через"
+    users ||--o{ push_subscriptions : "отримує"
+    users ||--o| notification_preferences : "налаштовує"
 
     users { text id PK; text email UK; text nickname UK; bytea password_hash; bool email_verified; timestamptz created_at }
     email_verifications { text token_hash PK; text user_id FK; timestamptz expires_at }
@@ -134,6 +149,9 @@ erDiagram
     items { text id PK; text name; text kind }
     inventories { text owner_id PK,FK; timestamptz daily_reward_at }
     inventory_items { text owner_id PK,FK; text item_id PK,FK; int quantity }
+    user_identities { text provider PK; text subject PK; text user_id FK; timestamptz created_at }
+    push_subscriptions { text endpoint PK; text user_id FK; text p256dh; text auth; timestamptz created_at }
+    notification_preferences { text user_id PK,FK; text_array disabled_kinds; bool quiet_enabled; int quiet_from; int quiet_to; text timezone; text lang }
 ```
 
 Показники улюбленця мають `CHECK (… BETWEEN 0 AND 100)`, кількість предметів — `CHECK (quantity > 0)`, email і нікнейм (без урахування регістру) — унікальні індекси.
@@ -151,7 +169,8 @@ docker compose up --build
 | Сервіс | Що робить | Адреса з хоста |
 |---|---|---|
 | `caddy` | HTTPS, HSTS, статика фронтенду, проксі на API | https://localhost:8443 (http://localhost:8080 перенаправляє на HTTPS) |
-| `api` | Go API; під час старту застосовує міграції | лише всередині мережі Compose |
+| `api` | Go API, дві репліки (`API_REPLICAS`); під час старту застосовує міграції | лише всередині мережі Compose |
+| `pet-engine` | воркер asynq: перевірка показників, push-сповіщення | метрики http://localhost:9090/metrics |
 | `postgres` | PostgreSQL 17, том `pgdata` | — |
 | `redis` | Redis 7, том `redisdata` | — |
 | `mailpit` | приймає листи від API і показує їх у вебінтерфейсі | http://localhost:8025 |
@@ -167,10 +186,17 @@ docker compose down -v     # зупинити й видалити дані postg
 
 **Міграції.** API застосовує нові міграції під час кожного старту (`MIGRATE_ON_START=true`), тож порожня БД сама доходить до актуальної схеми. Advisory lock не дає двом екземплярам API мігрувати одночасно. Окремо, без запуску API: `DATABASE_URL=… make migrate`. Нова зміна схеми оформлюється новим файлом `internal/platform/pg/migrations/0000N_назва.sql` із секціями `-- +goose Up` / `-- +goose Down`; міграції, які вже потрапили в `main`, не редагуються.
 
-Приклад запитів (`-k` через локальний сертифікат):
+**Web Push.** Згенеруйте пару ключів VAPID (`make vapid`) і покладіть `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` у `.env`: ключі мають бути однакові в `api` і `pet-engine`. Без них push вимкнено (`GET /notifications/push-key` повертає `enabled: false`). Лише при запуску без Redis API створює тимчасові ключі сам.
+
+**OAuth.** Задайте `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` і `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`; redirect URI у консолі провайдера — `PUBLIC_URL/api/v1/auth/oauth/google/callback` і `…/github/callback`. Кнопки з'являються на формі входу лише для налаштованих провайдерів.
+
+**Перевірка pet-engine.** `docker compose exec pet-engine pet-engine ping` ставить тестову задачу; після неї `curl -s localhost:9090/metrics` показує `pet_engine_tasks_total{task="system:ping",outcome="succeeded"} 1`.
+
+Приклад запитів (`-k` через локальний сертифікат; мутуючі запити з чужим `Origin` відхиляються, тож додайте свій):
 
 ```bash
 B=https://localhost:8443/api/v1
+alias curl='curl -H Origin:https://localhost:8443'
 curl -k -X POST $B/auth/register -H 'Content-Type: application/json' -d '{"email":"a@b.co","password":"secret123","nickname":"misha"}'
 # лист із посиланням підтвердження — на http://localhost:8025
 curl -k -c jar -X POST $B/auth/login -H 'Content-Type: application/json' -d '{"email":"a@b.co","password":"secret123"}'
@@ -208,7 +234,9 @@ go run ./cmd/api                    # міграції застосуються 
 |---|---|
 | `make up` / `make down` | `docker compose up --build` / `docker compose down` |
 | `make run` | запустити API на :8080 |
-| `make run-engine` | запустити `pet-engine` |
+| `make run-engine` | запустити `pet-engine` (потрібні `DATABASE_URL` і `REDIS_URL`) |
+| `make ping` | поставити тестову задачу `system:ping` |
+| `make vapid` | згенерувати пару ключів VAPID |
 | `make migrate` | застосувати міграції до `DATABASE_URL` |
 | `make web` | запустити фронтенд на :5173 |
 | `make build` | зібрати бінарні файли (`api`, `migrate`, `pet-engine`) у `bin/` |
@@ -261,6 +289,24 @@ go run ./cmd/api                    # міграції застосуються 
 | NFR-MNT-02 Версійовані міграції goose, що застосовуються автоматично | Міграції вбудовані в бінарник і застосовуються під час старту API; є `cmd/migrate` | `docker compose up` на порожніх томах: у лозі `api` видно `migration applied` для кожної версії і `database schema is up to date` |
 | NFR-MNT-04 CI: лінтер, тести, збірка на кожен PR | GitHub Actions: `gofmt`, `go vet`, `go test -race`, збірка бекенду, typecheck і збірка фронтенду | [.github/workflows/ci.yml](.github/workflows/ci.yml); branch protection на `main` |
 | NFR-MNT-06 Локальне середовище однією командою | Compose: `api`, `postgres`, `redis`, `caddy`, `mailpit` з healthcheck-ами й залежностями | `docker compose up --build` після клонування |
+
+## Вимоги спринту 2
+
+| Вимога | Як виконано | Як перевірити |
+|---|---|---|
+| ARCH Каркас pet-engine (SCRUM-52) | Окремий процес [cmd/pet-engine](cmd/pet-engine/main.go) з воркером asynq на спільному Redis, черги `critical` (push) і `default`, метрики й `healthz` на `:9090` | `make ping` або `docker compose exec pet-engine pet-engine ping`, потім `/metrics` |
+| FR-AUTH-02 Вхід через Google і GitHub (SCRUM-53) | Перший вхід створює акаунт (email уже підтверджений, нікнейм з логіна), повторний входить в існуючий; акаунт з тим самим підтвердженим email прив'язується. Помилка провайдера чи відмова користувача повертає на `/?oauth=error|denied|no_email` з повідомленням на формі | `GET /auth/providers`; кнопки на формі входу |
+| FR-NOT-01 Підписка/відписка web push (SCRUM-54) | Підписка лише після `Notification.requestPermission()` у налаштуваннях щоденника; `POST`/`DELETE /notifications/subscriptions`; 404/410 від push-сервісу видаляє підписку | Перемикач «Сповіщення» в щоденнику; таблиця `push_subscriptions` |
+| FR-NOT-02 Push, коли показник < 20 (SCRUM-55) | Після кожної дії API планує задачу на момент перетину порогу (`Pet.TimeToThreshold`); воркер перевіряє версію улюбленця, перераховує стан і надсилає push, лише якщо показник справді нижчий, інакше переплановує | Після створення улюбленця в `asynq:{default}:scheduled` з'являється задача `lowstat:…` |
+| NFR-PERF-02 LCP ≤ 2,5 с, JS ≤ 300 КБ gzip (SCRUM-57) | Сторінки магазину, ігор, щоденника й форма входу вантажаться ліниво; vendor-код розбито на чанки `react`, `query`, `i18n` | `npm run build && npm run size` (≈ 92 КБ gzip, перевіряється в CI); Lighthouse у DevTools |
+| NFR-REL-05 Атомарність інвентаря й обміну (SCRUM-58) | `ReserveItems`, `ReleaseItems`, `ExchangeItems` виконуються в одній транзакції з `SELECT … FOR UPDATE`; інвентарі блокуються в порядку id власника (без взаємних блокувань); перевірка кількості перед будь-якою зміною | [internal/pets/service.go](internal/pets/service.go) |
+| NFR-SEC-04 Rate limit (SCRUM-59) | 60 запитів/хв на користувача (або IP), 5 невдалих входів за 15 хв на email; лічильники в Redis; 429 з `Retry-After` і `X-RateLimit-*` | 61-й запит за хвилину або 6-й невірний пароль дає 429 |
+| NFR-SEC-05 Валідація, SQL-ін'єкції, XSS, CSRF (SCRUM-60) | Усі запити перевіряються за OpenAPI (типи, довжини, шаблони, `Content-Type`), текст без керівних символів; лише параметризовані запити sqlc; CSP і `X-Frame-Options` у Caddy та API; мутуючі запити з чужим `Origin` або `Sec-Fetch-Site: cross-site` дають 403, cookie `SameSite=Strict` | `curl -X POST … -H Origin:https://evil.example` → 403 |
+| FR-NOT-03 Push про друзів і обміни (SCRUM-62) | `engine.Notifier` реалізує `social.Notifier` і `trade.Notifier` та ставить `notify:send` через `tx.AfterCommit`, тобто лише після успішного COMMIT. Сценарії друзів і обмінів підключать його у своїх спринтах | [internal/engine/notifier.go](internal/engine/notifier.go) |
+| FR-NOT-04 Типи сповіщень і тихі години (SCRUM-63) | `GET`/`PUT /notifications/preferences`; тихі години в часовому поясі гравця, зокрема через північ | У тихі години воркер пише `result: quiet_hours` і нічого не надсилає |
+| FR-NOT-05 Не більше 5 push на добу (SCRUM-64) | Лічильник `notify:daily:<user>:<дата в поясі гравця>` у Redis; 6-й push пропускається (`daily_limit`), слот повертається, якщо доставка не вдалася | Ключ `notify:daily:*` у Redis |
+| NFR-SC-02 Stateless API (SCRUM-65) | Сесії, rate limit, pub/sub, OAuth-state і черга — у Redis/cookie; поза `dev` API не стартує без `DATABASE_URL` і `REDIS_URL`; Compose запускає 2 репліки, Caddy розподіляє запити (`dynamic a`, round robin) | Зупиніть одну репліку (`docker stop tamagochi-api-1`): `GET /me` і `/auth/refresh` працюють далі |
+| NFR-REL-04 Повтори до 5 разів (SCRUM-68) | 5 спроб із затримкою 10 с, 20 с, 40 с, 80 с; після п'ятої невдачі задача в архіві asynq (`asynq:{…}:archived`), метрика `outcome="dead"` | Підписка з недоступним endpoint: у лозі pet-engine `attempt=1…4`, потім `task moved to dead queue` |
 
 ## Команда та ролі
 
