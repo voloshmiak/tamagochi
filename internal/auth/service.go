@@ -12,6 +12,7 @@ import (
 
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
 	"github.com/voloshmiak/tamagochi/internal/platform/id"
+	"github.com/voloshmiak/tamagochi/internal/platform/tx"
 )
 
 const VerificationTTL = 48 * time.Hour
@@ -19,6 +20,9 @@ const VerificationTTL = 48 * time.Hour
 type Deps struct {
 	Users         UserRepository
 	Verifications VerificationRepository
+	Identities    IdentityRepository
+	Guard         LoginGuard
+	Tx            tx.Manager
 	Hasher        PasswordHasher
 	Tokens        TokenIssuer
 	Mailer        Mailer
@@ -30,6 +34,9 @@ type Deps struct {
 type Service struct {
 	users         UserRepository
 	verifications VerificationRepository
+	identities    IdentityRepository
+	guard         LoginGuard
+	tx            tx.Manager
 	hasher        PasswordHasher
 	tokens        TokenIssuer
 	mailer        Mailer
@@ -39,9 +46,21 @@ type Service struct {
 }
 
 func NewService(d Deps) *Service {
+	if d.Identities == nil {
+		d.Identities = NewMemoryIdentityRepository()
+	}
+	if d.Guard == nil {
+		d.Guard = noGuard{}
+	}
+	if d.Tx == nil {
+		d.Tx = &tx.Local{}
+	}
 	return &Service{
 		users:         d.Users,
 		verifications: d.Verifications,
+		identities:    d.Identities,
+		guard:         d.Guard,
+		tx:            d.Tx,
 		hasher:        d.Hasher,
 		tokens:        d.Tokens,
 		mailer:        d.Mailer,
@@ -103,24 +122,39 @@ func hashToken(token string) string {
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (User, Tokens, error) {
-	u, err := s.users.ByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
-	if errors.Is(err, ErrUserNotFound) {
-		return User{}, Tokens{}, ErrInvalidCredentials
-	}
-	if err != nil {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if err := s.guard.Check(ctx, email); err != nil {
 		return User{}, Tokens{}, err
 	}
-	if err := s.hasher.Compare(u.PasswordHash, password); err != nil {
-		return User{}, Tokens{}, ErrInvalidCredentials
-	}
-	t, err := s.tokens.Issue(u.ID)
-	if err != nil {
+	u, err := s.users.ByEmail(ctx, email)
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return User{}, Tokens{}, err
 	}
-	if err := s.store.Save(ctx, refreshRecord(t, u.ID, id.New())); err != nil {
+	if err != nil || len(u.PasswordHash) == 0 || s.hasher.Compare(u.PasswordHash, password) != nil {
+		if err := s.guard.Failed(ctx, email); err != nil {
+			slog.WarnContext(ctx, "count failed login", "err", err)
+		}
+		return User{}, Tokens{}, ErrInvalidCredentials
+	}
+	if err := s.guard.Succeeded(ctx, email); err != nil {
+		slog.WarnContext(ctx, "reset failed logins", "err", err)
+	}
+	t, err := s.startSession(ctx, u.ID)
+	if err != nil {
 		return User{}, Tokens{}, err
 	}
 	return u, t, nil
+}
+
+func (s *Service) startSession(ctx context.Context, userID string) (Tokens, error) {
+	t, err := s.tokens.Issue(userID)
+	if err != nil {
+		return Tokens{}, err
+	}
+	if err := s.store.Save(ctx, refreshRecord(t, userID, id.New())); err != nil {
+		return Tokens{}, err
+	}
+	return t, nil
 }
 
 func (s *Service) Refresh(ctx context.Context, refresh string) (Tokens, error) {

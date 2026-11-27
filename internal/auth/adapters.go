@@ -193,3 +193,31 @@ func (r *MemoryVerificationRepository) Consume(_ context.Context, tokenHash stri
 	delete(r.byHash, tokenHash)
 	return v, nil
 }
+
+type MemoryIdentityRepository struct {
+	mu     sync.RWMutex
+	byPair map[[2]string]string
+}
+
+func NewMemoryIdentityRepository() *MemoryIdentityRepository {
+	return &MemoryIdentityRepository{byPair: make(map[[2]string]string)}
+}
+
+func (r *MemoryIdentityRepository) UserID(_ context.Context, provider, subject string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if userID, ok := r.byPair[[2]string{provider, subject}]; ok {
+		return userID, nil
+	}
+	return "", ErrIdentityNotFound
+}
+
+func (r *MemoryIdentityRepository) Link(_ context.Context, provider, subject, userID string, _ time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := [2]string{provider, subject}
+	if _, ok := r.byPair[key]; !ok {
+		r.byPair[key] = userID
+	}
+	return nil
+}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/voloshmiak/tamagochi/internal/api/oapi"
 	"github.com/voloshmiak/tamagochi/internal/platform/apperr"
+	"github.com/voloshmiak/tamagochi/internal/platform/clock"
 	"github.com/voloshmiak/tamagochi/internal/platform/httpx"
 )
 
@@ -19,10 +20,35 @@ type Handler struct {
 	svc          *Service
 	secureCookie bool
 	appURL       string
+	providers    map[string]OAuthProvider
+	stateSecret  []byte
+	clock        clock.Clock
 }
 
-func NewHandler(svc *Service, secureCookie bool, appURL string) *Handler {
-	return &Handler{svc: svc, secureCookie: secureCookie, appURL: appURL}
+type HandlerOptions struct {
+	SecureCookie bool
+	AppURL       string
+	Providers    []OAuthProvider
+	StateSecret  []byte
+	Clock        clock.Clock
+}
+
+func NewHandler(svc *Service, o HandlerOptions) *Handler {
+	h := &Handler{
+		svc:          svc,
+		secureCookie: o.SecureCookie,
+		appURL:       o.AppURL,
+		providers:    make(map[string]OAuthProvider, len(o.Providers)),
+		stateSecret:  o.StateSecret,
+		clock:        o.Clock,
+	}
+	if h.clock == nil {
+		h.clock = clock.System{}
+	}
+	for _, p := range o.Providers {
+		h.providers[p.Name()] = p
+	}
+	return h
 }
 
 func newUserView(u User) oapi.User {

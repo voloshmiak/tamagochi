@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/voloshmiak/tamagochi/internal/platform/apperr"
+	"github.com/voloshmiak/tamagochi/internal/platform/text"
 )
 
 type User struct {
@@ -38,7 +39,11 @@ func (in RegisterInput) normalize() (RegisterInput, error) {
 	if len(in.Password) > 72 {
 		return in, fmt.Errorf("%w: password must be at most 72 bytes", apperr.ErrInvalid)
 	}
-	in.Nickname = strings.TrimSpace(in.Nickname)
+	nickname, ok := text.Clean(in.Nickname)
+	if !ok {
+		return in, fmt.Errorf("%w: nickname contains forbidden characters", apperr.ErrInvalid)
+	}
+	in.Nickname = nickname
 	if n := utf8.RuneCountInString(in.Nickname); n < 3 || n > 20 {
 		return in, fmt.Errorf("%w: nickname must be 3-20 characters", apperr.ErrInvalid)
 	}
@@ -52,6 +57,7 @@ var (
 	ErrInvalidCredentials = fmt.Errorf("%w: invalid email or password", apperr.ErrUnauthorized)
 
 	ErrVerificationInvalid = fmt.Errorf("%w: verification link is invalid or expired", apperr.ErrInvalid)
+	ErrIdentityNotFound    = fmt.Errorf("%w: identity", apperr.ErrNotFound)
 )
 
 type UserRepository interface {
@@ -60,6 +66,11 @@ type UserRepository interface {
 	ByEmail(ctx context.Context, email string) (User, error)
 	ByNickname(ctx context.Context, nickname string) (User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
+}
+
+type IdentityRepository interface {
+	UserID(ctx context.Context, provider, subject string) (string, error)
+	Link(ctx context.Context, provider, subject, userID string, at time.Time) error
 }
 
 type Verification struct {

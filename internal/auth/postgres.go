@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -105,4 +106,27 @@ func (r PgVerificationRepository) Consume(ctx context.Context, tokenHash string)
 		return Verification{}, fmt.Errorf("consume verification: %w", err)
 	}
 	return Verification{TokenHash: row.TokenHash, UserID: row.UserID, ExpiresAt: row.ExpiresAt}, nil
+}
+
+type PgIdentityRepository struct {
+	Pool *pgxpool.Pool
+}
+
+func (r PgIdentityRepository) UserID(ctx context.Context, provider, subject string) (string, error) {
+	userID, err := pg.Queries(ctx, r.Pool).UserIDByIdentity(ctx, pgdb.UserIDByIdentityParams{Provider: provider, Subject: subject})
+	if pg.IsNoRows(err) {
+		return "", ErrIdentityNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("load identity: %w", err)
+	}
+	return userID, nil
+}
+
+func (r PgIdentityRepository) Link(ctx context.Context, provider, subject, userID string, at time.Time) error {
+	err := pg.Queries(ctx, r.Pool).LinkIdentity(ctx, pgdb.LinkIdentityParams{Provider: provider, Subject: subject, UserID: userID, CreatedAt: at})
+	if err != nil {
+		return fmt.Errorf("link identity: %w", err)
+	}
+	return nil
 }
