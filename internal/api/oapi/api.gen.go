@@ -45,6 +45,24 @@ func (e Action) Valid() bool {
 	}
 }
 
+// Defines values for AuthProvider.
+const (
+	Github AuthProvider = "github"
+	Google AuthProvider = "google"
+)
+
+// Valid indicates whether the value is a known member of the AuthProvider enum.
+func (e AuthProvider) Valid() bool {
+	switch e {
+	case Github:
+		return true
+	case Google:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ItemKind.
 const (
 	Food ItemKind = "food"
@@ -60,6 +78,45 @@ func (e ItemKind) Valid() bool {
 	case Soap:
 		return true
 	case Toy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationKind.
+const (
+	FriendRequest NotificationKind = "friend_request"
+	LowStat       NotificationKind = "low_stat"
+	Trade         NotificationKind = "trade"
+)
+
+// Valid indicates whether the value is a known member of the NotificationKind enum.
+func (e NotificationKind) Valid() bool {
+	switch e {
+	case FriendRequest:
+		return true
+	case LowStat:
+		return true
+	case Trade:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationPreferencesLang.
+const (
+	En NotificationPreferencesLang = "en"
+	Uk NotificationPreferencesLang = "uk"
+)
+
+// Valid indicates whether the value is a known member of the NotificationPreferencesLang enum.
+func (e NotificationPreferencesLang) Valid() bool {
+	switch e {
+	case En:
+		return true
+	case Uk:
 		return true
 	default:
 		return false
@@ -133,6 +190,17 @@ type ActionResult struct {
 	UsedItem *Item    `json:"usedItem,omitempty"`
 }
 
+// AuthProvider defines model for AuthProvider.
+type AuthProvider string
+
+// AuthProviders defines model for AuthProviders.
+type AuthProviders struct {
+	Providers []AuthProvider `json:"providers"`
+}
+
+// ClockTime Example: 23:00
+type ClockTime = string
+
 // CreatePetRequest defines model for CreatePetRequest.
 type CreatePetRequest struct {
 	Appearance string `json:"appearance"`
@@ -178,6 +246,25 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// NotificationKind defines model for NotificationKind.
+type NotificationKind string
+
+// NotificationPreferences defines model for NotificationPreferences.
+type NotificationPreferences struct {
+	// Disabled Kinds the player turned off
+	Disabled   []NotificationKind          `json:"disabled"`
+	Lang       NotificationPreferencesLang `json:"lang"`
+	QuietHours QuietHours                  `json:"quietHours"`
+
+	// Timezone IANA time zone of the player
+	//
+	// Example: Europe/Kyiv
+	Timezone string `json:"timezone"`
+}
+
+// NotificationPreferencesLang defines model for NotificationPreferences.Lang.
+type NotificationPreferencesLang string
+
 // Pet defines model for Pet.
 type Pet struct {
 	Appearance string    `json:"appearance"`
@@ -193,6 +280,40 @@ type Pet struct {
 	Stats     Stats              `json:"stats"`
 	Traits    map[string]float32 `json:"traits"`
 	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// PushKey defines model for PushKey.
+type PushKey struct {
+	Enabled bool `json:"enabled"`
+
+	// PublicKey VAPID public key (base64url); empty when push is off
+	PublicKey string `json:"publicKey"`
+}
+
+// PushSubscription defines model for PushSubscription.
+type PushSubscription struct {
+	Endpoint       string   `json:"endpoint"`
+	ExpirationTime *float32 `json:"expirationTime"`
+	Keys           struct {
+		Auth   string `json:"auth"`
+		P256dh string `json:"p256dh"`
+	} `json:"keys"`
+}
+
+// PushUnsubscribe defines model for PushUnsubscribe.
+type PushUnsubscribe struct {
+	Endpoint string `json:"endpoint"`
+}
+
+// QuietHours defines model for QuietHours.
+type QuietHours struct {
+	Enabled bool `json:"enabled"`
+
+	// From Example: 23:00
+	From ClockTime `json:"from"`
+
+	// To Example: 23:00
+	To ClockTime `json:"to"`
 }
 
 // Reaction defines model for Reaction.
@@ -233,8 +354,18 @@ type User struct {
 	Nickname      string    `json:"nickname"`
 }
 
+// Provider defines model for Provider.
+type Provider = AuthProvider
+
 // RetryLater defines model for RetryLater.
 type RetryLater = Error
+
+// OauthCallbackParams defines parameters for OauthCallback.
+type OauthCallbackParams struct {
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
 
 // VerifyEmailParams defines parameters for VerifyEmail.
 type VerifyEmailParams struct {
@@ -246,6 +377,15 @@ type LoginJSONRequestBody = LoginRequest
 
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = RegisterRequest
+
+// SetNotificationPreferencesJSONRequestBody defines body for SetNotificationPreferences for application/json ContentType.
+type SetNotificationPreferencesJSONRequestBody = NotificationPreferences
+
+// UnsubscribePushJSONRequestBody defines body for UnsubscribePush for application/json ContentType.
+type UnsubscribePushJSONRequestBody = PushUnsubscribe
+
+// SubscribePushJSONRequestBody defines body for SubscribePush for application/json ContentType.
+type SubscribePushJSONRequestBody = PushSubscription
 
 // CreatePetJSONRequestBody defines body for CreatePet for application/json ContentType.
 type CreatePetJSONRequestBody = CreatePetRequest
@@ -261,6 +401,15 @@ type ServerInterface interface {
 	// Logout Revoke the refresh session and clear the cookies
 	// (POST /auth/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
+	// StartOAuth Redirect to the provider's consent page (FR-AUTH-02)
+	// (GET /auth/oauth/{provider})
+	StartOAuth(w http.ResponseWriter, r *http.Request, provider Provider)
+	// OauthCallback Provider redirects back here; logs in or creates the account (FR-AUTH-02)
+	// (GET /auth/oauth/{provider}/callback)
+	OauthCallback(w http.ResponseWriter, r *http.Request, provider Provider, params OauthCallbackParams)
+	// ListAuthProviders OAuth providers enabled on this server (FR-AUTH-02)
+	// (GET /auth/providers)
+	ListAuthProviders(w http.ResponseWriter, r *http.Request)
 	// Refresh Rotate the refresh cookie and issue a new access cookie (FR-AUTH-03, NFR-SEC-03)
 	// (POST /auth/refresh)
 	Refresh(w http.ResponseWriter, r *http.Request)
@@ -279,6 +428,21 @@ type ServerInterface interface {
 	// GetMe Current user
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// GetNotificationPreferences Notification kinds and quiet hours (FR-NOT-04)
+	// (GET /notifications/preferences)
+	GetNotificationPreferences(w http.ResponseWriter, r *http.Request)
+	// SetNotificationPreferences Change notification kinds and quiet hours (FR-NOT-04)
+	// (PUT /notifications/preferences)
+	SetNotificationPreferences(w http.ResponseWriter, r *http.Request)
+	// GetPushKey VAPID public key for PushManager.subscribe (FR-NOT-01)
+	// (GET /notifications/push-key)
+	GetPushKey(w http.ResponseWriter, r *http.Request)
+	// UnsubscribePush Remove the push subscription of this browser (FR-NOT-01)
+	// (DELETE /notifications/subscriptions)
+	UnsubscribePush(w http.ResponseWriter, r *http.Request)
+	// SubscribePush Save the browser's push subscription after the player agreed (FR-NOT-01)
+	// (POST /notifications/subscriptions)
+	SubscribePush(w http.ResponseWriter, r *http.Request)
 	// CreatePet Create the player's pet (FR-PET-01)
 	// (POST /pets)
 	CreatePet(w http.ResponseWriter, r *http.Request)
@@ -302,6 +466,24 @@ func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
 // Logout Revoke the refresh session and clear the cookies
 // (POST /auth/logout)
 func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartOAuth Redirect to the provider's consent page (FR-AUTH-02)
+// (GET /auth/oauth/{provider})
+func (_ Unimplemented) StartOAuth(w http.ResponseWriter, r *http.Request, provider Provider) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// OauthCallback Provider redirects back here; logs in or creates the account (FR-AUTH-02)
+// (GET /auth/oauth/{provider}/callback)
+func (_ Unimplemented) OauthCallback(w http.ResponseWriter, r *http.Request, provider Provider, params OauthCallbackParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListAuthProviders OAuth providers enabled on this server (FR-AUTH-02)
+// (GET /auth/providers)
+func (_ Unimplemented) ListAuthProviders(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -338,6 +520,36 @@ func (_ Unimplemented) ClaimDailyReward(w http.ResponseWriter, r *http.Request) 
 // GetMe Current user
 // (GET /me)
 func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetNotificationPreferences Notification kinds and quiet hours (FR-NOT-04)
+// (GET /notifications/preferences)
+func (_ Unimplemented) GetNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetNotificationPreferences Change notification kinds and quiet hours (FR-NOT-04)
+// (PUT /notifications/preferences)
+func (_ Unimplemented) SetNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetPushKey VAPID public key for PushManager.subscribe (FR-NOT-01)
+// (GET /notifications/push-key)
+func (_ Unimplemented) GetPushKey(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UnsubscribePush Remove the push subscription of this browser (FR-NOT-01)
+// (DELETE /notifications/subscriptions)
+func (_ Unimplemented) UnsubscribePush(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SubscribePush Save the browser's push subscription after the player agreed (FR-NOT-01)
+// (POST /notifications/subscriptions)
+func (_ Unimplemented) SubscribePush(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -387,6 +599,114 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartOAuth operation middleware
+func (siw *ServerInterfaceWrapper) StartOAuth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider Provider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartOAuth(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OauthCallback operation middleware
+func (siw *ServerInterfaceWrapper) OauthCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider Provider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params OauthCallbackParams
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", r.URL.Query(), &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OauthCallback(w, r, provider, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAuthProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListAuthProviders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAuthProviders(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -490,6 +810,76 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNotificationPreferences operation middleware
+func (siw *ServerInterfaceWrapper) GetNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotificationPreferences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetNotificationPreferences operation middleware
+func (siw *ServerInterfaceWrapper) SetNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetNotificationPreferences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPushKey operation middleware
+func (siw *ServerInterfaceWrapper) GetPushKey(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPushKey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnsubscribePush operation middleware
+func (siw *ServerInterfaceWrapper) UnsubscribePush(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnsubscribePush(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubscribePush operation middleware
+func (siw *ServerInterfaceWrapper) SubscribePush(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubscribePush(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -665,6 +1055,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/auth/login", wrapper.Login)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/auth/providers", wrapper.ListAuthProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/auth/oauth/{provider}", wrapper.StartOAuth)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/auth/oauth/{provider}/callback", wrapper.OauthCallback)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/refresh", wrapper.Refresh)
 	})
 	r.Group(func(r chi.Router) {
@@ -688,6 +1087,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/inventory/daily-reward", wrapper.ClaimDailyReward)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notifications/push-key", wrapper.GetPushKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/notifications/subscriptions", wrapper.UnsubscribePush)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/notifications/subscriptions", wrapper.SubscribePush)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notifications/preferences", wrapper.GetNotificationPreferences)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/notifications/preferences", wrapper.SetNotificationPreferences)
+	})
 
 	return r
 }
@@ -697,42 +1111,61 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"xFptb+O4Ef4rBFvgEkC25SToixdFkaa723Rzt4aT7X3YBPVYGku8SKSWpOxTA//3gqRkS7asOLl475ss",
-	"cciZZ+aZGY38RAORZoIj14qOnqhElQmu0P54L6WQ5iIQXCPX5hKyLGEBaCb44BcluLmnghhTMFd/lDin",
-	"I/qHwWbXgXuqBm631Wrl0RBVIFlmNqGj8piVRyeoZXEDGr/DoXdCEASZFOQkECIJxZITIYnEJciQQCIR",
-	"woIECbAUw9N3RCESHSOxOvYu5xoliRFClNSj7sJiVntufjYPvcVA8FARLcgSmKZezQpdZEhHlHGNEVqV",
-	"V6vqud35MnC7PFHkeUpHX+kcMaQezRIozFYJYkY9ugQV0wev2lBpyXhk4HUbTPBbjsrBGobM3IJkLEWG",
-	"UjPj9zkkCj2a1W49UVgf3oV2qaJRXOK3nEkMjZ6l8EYnMfsFA13XSeWJVal5aob6uSPHaPfJBCsjeBtH",
-	"o8ph2k+qdSuP5grDa43pczJ2zba9Ru21SrXz2wC4kggax6hf6ZcsQ5DAAzS/Uvj1BnmkYzo6P/Noynj1",
-	"c9gSDxzSbakzvyF1tiO1Zandwqtr0WbjP4ElxcQya9fHkQSuMTwE6CuRG0RXHmV8gVwLWTwrtl64rXp1",
-	"bn2zNuXXSbCpNla38VdIs8TIVHmEtmCdolIQYS1A9yDq9t0ItKl0Xbe+qVa4gfqa709AOdcssfnMClRp",
-	"LwBOZlhlvXfEJykCV4RpwhSBBbAEZgkSLpbUBgpLTSbyvRbWMY2peolXt4Bw8t6WRa1wlDxtIsHCFrA9",
-	"+sh42MihQpgY0MKmUAFZa+qsqNLtOxbScml5zj5tS5P3Uv1pg+2wDdudTW9ExF6Z2TEFlrRClYFSSyHD",
-	"A4LW7lGTaDN8jC0Zvpm/dlSYCckvrdhcyBQ0HdEQNPY0syDvrK8o2IntLp5dJEEIYuISeIMEtMXEPTG3",
-	"J3o8qnSZE7o4cmsXudVaHbDapUgtgelDcOB5OtsTVnlm0A4P90AHIWqergyvTForW3fg2vl1NdrialIr",
-	"783gmmEMC+bS9A72mIrtfiqGLDNpIIAkpR6NZJ7a3youWrMCLsr+dOeJtecA3tgNNrp4G5WrPdotjpjS",
-	"KH8j4dcOrei7G7gseHy+Szj3unNHTfLPza7kL95LE0tNpzZkbitCNRn9UYqljomNOo+EKNkCQzKXIrU1",
-	"MEP9gyIQITn5MOmN39/1/LNT6q3jAqPIuAZmNjhiltiKgWgcBqHpXNui47aiaxP+IEHgCeOoVAlOmeh9",
-	"/7mSihxlVLxUKjUV7oUyCjRD/cKjtnxX7VFqsFbfa0DQ5sUvCls6rkBimQUOLgf7a5t98h+UbM6wnrRn",
-	"QhjlupJ5jRMHZL8qgtdi22d7NcN2wTC+wCCXTBe3JsOXUAjxyPAyNxx6ooy75vORYZVuRxSCAJX6rxaP",
-	"WGtIIWOfsHDvw4zPxS5VrgTXEgJNZqiXiNwSZPzzJQEe2uuPgswgeEQekpOfPkx6P/501/OHp31yFzNF",
-	"5ixBUybNSsV4lOA9VyKXARIxJ1rmOh5V2yiUC5TExI+cQ4DkZGqvOSQDyNhAQMamp+uD74oMb62m9zxI",
-	"GHJNjFWKnEyXOBsoGVgpVwj7YV8rIyyRRCbwQFeMZ5qcTFN43DyYnvbvq+5JWZEFJMzWHAIRMK60kZrh",
-	"XEg7BTANs2kLjFox8DBBqfr3/J7folJMcEVyheTfP98RxkmsdfaZJwVxLjL61p0z9chU4lyiissbpx4x",
-	"wN6+v+r55/176z6m7SvGHaQQCR3EjFyOr6lHFyiVc5zfP+v7JkBFhhwyRkf0vO/3z2321LGNmwHkOh4k",
-	"plk0PzPhiodhmR2uXId05HpJ6kIZlf6HCIs3G8c0+tRVkzBa5rjymhOoM99/s7NtVmmZBH3+ZFC78P19",
-	"G6w1GqwnVRf+8ODVNQrT0dcHj6o8TUEWDmrCuBkuaUWUi51NmHyY9C6/3P2r55+bYqQhUnaYYlj/YHZd",
-	"e1PkutOd5vkOsBe73L8RUYQhMcu7tJ7gQjy6aVgZuGvdDVdNdpf2aWlJh/Kl/H7tJ+WCQ9S/KoEr28U3",
-	"9NNEaNBNi51t1mCmVI4ECMclccyuntZcWOf0aScirrfrgqRccRyKbjeXB7F0eHSWujlZ+Bqq/vVNQqCE",
-	"hSyZjokt4db5VWdqSGxeGoEsbGV3xpcLN3Ew7PK9lbSejLDF8bZlKN6vW2IJKWo7dv5aNgHfcpTFpgeo",
-	"in/Te/Whc+eEcPWw5edz/3yXdRMMmcRAm6G2IQhk2Tsy/fui7G/+NpwSwYnKLTG8+hN/SoSOUS6ZwuYQ",
-	"/UY4+Jphs63eqstfV4LPmXT9femtMJSGm9aB5raFZ/MW8Cq/NQaRrV77iHozrztieatPOvfWuJdlwzWY",
-	"ZmalbANn3pYSKFCu27LGAFFp0LnavEb9qQ5bhlptwzaw4j25GQ635rwrM5Gsj5GPCGT9mBYo3RNSjY9f",
-	"CKtHL84OyEe1L2FNT1ggdnB/V5vNCh6YN1pJAkiQhyBJCIVHvtxdPe+WFLvC+Eekv2N79srQvcqlNK8K",
-	"uUJZM7pGYWv//sirvs8cqdzufP/5zvV2jOWRb1Zuh0cszhu3Wv1q+egHZcY4mxAf7glxc/lcnBeVu48U",
-	"6nsw//zpNQBevA7AMWpXCRP4n0skRjTX6JK4cp2tVm5oVhuMeaS6vOiGeODGsh3cGqM0c5zyq/Fx+NX8",
-	"6P2dXzkbX7dbPO6eE3vA9yDbxcupeeR/YZiG0YHAEU37zAnTmNYbjVCgIlxoEsMCGzXsN1fTMgAJkABk",
-	"pck7e3g5YXJNvTDjG3OXWTA2Spy3UaDZlTandV8fTFftJl+ucc9lQkfUjq4WQ7p6WP1/AA==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

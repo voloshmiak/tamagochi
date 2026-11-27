@@ -6,24 +6,30 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
+	"github.com/SherClockHolmes/webpush-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/voloshmiak/tamagochi/internal/api/oapi"
 	"github.com/voloshmiak/tamagochi/internal/auth"
 	"github.com/voloshmiak/tamagochi/internal/brain"
 	"github.com/voloshmiak/tamagochi/internal/config"
+	"github.com/voloshmiak/tamagochi/internal/engine"
+	"github.com/voloshmiak/tamagochi/internal/notify"
 	"github.com/voloshmiak/tamagochi/internal/pets"
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
 	"github.com/voloshmiak/tamagochi/internal/platform/httpx"
-	"github.com/voloshmiak/tamagochi/internal/platform/pg"
-	"github.com/voloshmiak/tamagochi/internal/platform/tx"
+	"github.com/voloshmiak/tamagochi/internal/platform/ratelimit"
+	"github.com/voloshmiak/tamagochi/internal/queue"
+	"github.com/voloshmiak/tamagochi/internal/realtime"
+	"github.com/voloshmiak/tamagochi/internal/trade"
 )
 
 const BasePath = "/api/v1"
+
+var _ trade.InventoryPort = (*pets.Service)(nil)
 
 type App struct {
 	Handler http.Handler
@@ -32,18 +38,37 @@ type App struct {
 
 func (a *App) Close() error {
 	var errs []error
-	for _, c := range a.closers {
-		errs = append(errs, c())
+	for i := len(a.closers) - 1; i >= 0; i-- {
+		errs = append(errs, a.closers[i]())
 	}
 	return errors.Join(errs...)
 }
 
 func New(ctx context.Context, cfg config.Config, c clock.Clock) (*App, error) {
 	a := &App{}
-	st, err := a.storage(ctx, cfg, c)
+	h, err := a.build(ctx, cfg, c)
 	if err != nil {
 		_ = a.Close()
 		return nil, err
+	}
+	a.Handler = h
+	return a, nil
+}
+
+func (a *App) build(ctx context.Context, cfg config.Config, c clock.Clock) (http.Handler, error) {
+	st, err := openStorage(ctx, cfg, c, a)
+	if err != nil {
+		return nil, err
+	}
+	q := a.queue(st)
+	notifier := engine.Notifier{Queue: q}
+	if st.redis == nil && cfg.VAPID.PublicKey == "" {
+		priv, pub, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			return nil, fmt.Errorf("generate VAPID keys: %w", err)
+		}
+		cfg.VAPID.PublicKey, cfg.VAPID.PrivateKey = pub, priv
+		slog.WarnContext(ctx, "VAPID keys are not set: using throwaway keys, push subscriptions break on restart")
 	}
 
 	tokens := &auth.JWTIssuer{Secret: []byte(cfg.JWTSecret), AccessTTL: cfg.AccessTTL, RefreshTTL: cfg.RefreshTTL, Clock: c}
@@ -54,6 +79,9 @@ func New(ctx context.Context, cfg config.Config, c clock.Clock) (*App, error) {
 	authSvc := auth.NewService(auth.Deps{
 		Users:         st.users,
 		Verifications: st.verifications,
+		Identities:    st.identities,
+		Guard:         auth.CounterGuard{Counter: st.counter},
+		Tx:            st.tx,
 		Hasher:        auth.BcryptHasher{},
 		Tokens:        tokens,
 		Mailer:        mailer,
@@ -61,96 +89,123 @@ func New(ctx context.Context, cfg config.Config, c clock.Clock) (*App, error) {
 		Clock:         c,
 		VerifyURL:     cfg.PublicURL + BasePath + "/auth/verify",
 	})
+	rules := pets.DefaultRules()
 	petSvc := pets.NewService(pets.Deps{
 		Pets:      st.pets,
 		Inventory: st.inventory,
 		Tx:        st.tx,
 		Brain:     brain.NewUtilityBrain(cfg.BrainSeed),
 		Clock:     c,
+		Rules:     rules,
+		LowStat:   notifier,
+		Publisher: petPublisher{broker: st.broker, rules: rules},
 	})
+	notifySvc := newNotifyService(cfg, st, c)
 
-	h, err := Router(tokens, Server{
-		Handler:     auth.NewHandler(authSvc, cfg.CookieSecure, cfg.PublicURL),
-		PetsHandler: pets.NewHandler(petSvc, c),
+	if mem, ok := q.(*queue.Memory); ok {
+		engine.New(engine.Deps{
+			Pets:   st.pets,
+			Notify: notifySvc,
+			Queue:  mem,
+			Users:  engine.UserNicknames{Users: st.users},
+			Clock:  c,
+		}).Register(mem)
+	}
+
+	return Router(tokens, Server{
+		Handler:       auth.NewHandler(authSvc, oauthOptions(cfg, c)),
+		PetsHandler:   pets.NewHandler(petSvc, c),
+		NotifyHandler: notify.NewHandler(notifySvc),
+	}, RouterOptions{
+		Counter: st.counter,
+		Limit:   ratelimit.Limit{Max: cfg.RateLimitPerMinute, Window: time.Minute},
+		Origins: []string{cfg.PublicURL},
 	})
-	if err != nil {
-		_ = a.Close()
-		return nil, err
-	}
-	a.Handler = h
-	return a, nil
 }
 
-type storage struct {
-	users         auth.UserRepository
-	verifications auth.VerificationRepository
-	refresh       auth.RefreshStore
-	pets          pets.PetRepository
-	inventory     pets.InventoryRepository
-	tx            tx.Manager
+func (a *App) queue(st storage) queue.Enqueuer {
+	if st.redis != nil {
+		e := queue.NewAsynqEnqueuer(st.redis)
+		a.addCloser(e.Close)
+		return e
+	}
+	slog.Warn("REDIS_URL is not set: background tasks run inside the API process")
+	m := queue.NewMemory(nil, nil)
+	a.addCloser(m.Close)
+	return m
 }
 
-func (a *App) storage(ctx context.Context, cfg config.Config, c clock.Clock) (storage, error) {
-	var st storage
-	if cfg.DatabaseURL == "" {
-		slog.WarnContext(ctx, "DATABASE_URL is not set: data is kept in memory and lost on restart")
-		st.users = auth.NewMemoryUserRepository()
-		st.verifications = auth.NewMemoryVerificationRepository()
-		st.pets = pets.NewMemoryPetRepository()
-		st.inventory = pets.NewMemoryInventoryRepository()
-		st.tx = &tx.Local{}
-	} else {
-		pool, err := pg.Open(ctx, cfg.DatabaseURL)
-		if err != nil {
-			return st, err
-		}
-		a.closers = append(a.closers, func() error { pool.Close(); return nil })
-		if cfg.MigrateOnStart {
-			if err := pg.Migrate(ctx, pool); err != nil {
-				return st, err
-			}
-		}
-		st = postgresStorage(pool)
+func newNotifyService(cfg config.Config, st storage, c clock.Clock) *notify.Service {
+	var sender notify.Sender = notify.LogSender{}
+	if cfg.VAPID.PublicKey != "" {
+		sender = notify.WebPushSender{PublicKey: cfg.VAPID.PublicKey, PrivateKey: cfg.VAPID.PrivateKey, Subject: cfg.VAPID.Subject}
 	}
-
-	if cfg.RedisURL == "" {
-		slog.WarnContext(ctx, "REDIS_URL is not set: refresh sessions are kept in memory")
-		st.refresh = auth.NewMemoryRefreshStore(c)
-		return st, nil
-	}
-	opts, err := redis.ParseURL(cfg.RedisURL)
-	if err != nil {
-		return st, fmt.Errorf("REDIS_URL: %w", err)
-	}
-	client := redis.NewClient(opts)
-	a.closers = append(a.closers, client.Close)
-	if err := client.Ping(ctx).Err(); err != nil {
-		return st, fmt.Errorf("redis ping: %w", err)
-	}
-	st.refresh = auth.RedisRefreshStore{Client: client, Clock: c}
-	return st, nil
+	return notify.NewService(notify.Deps{
+		Subscriptions: st.subscriptions,
+		Preferences:   st.preferences,
+		Counter:       st.counter,
+		Sender:        sender,
+		Clock:         c,
+		PublicKey:     cfg.VAPID.PublicKey,
+	})
 }
 
-func postgresStorage(pool *pgxpool.Pool) storage {
-	return storage{
-		users:         auth.PgUserRepository{Pool: pool},
-		verifications: auth.PgVerificationRepository{Pool: pool},
-		pets:          pets.PgPetRepository{Pool: pool},
-		inventory:     pets.PgInventoryRepository{Pool: pool},
-		tx:            pg.TxManager{Pool: pool},
+func oauthOptions(cfg config.Config, c clock.Clock) auth.HandlerOptions {
+	callback := func(provider string) string {
+		return cfg.PublicURL + BasePath + "/auth/oauth/" + provider + "/callback"
 	}
+	var providers []auth.OAuthProvider
+	if cfg.Google.Enabled() {
+		providers = append(providers, auth.NewGoogleProvider(auth.OAuthConfig{
+			ClientID: cfg.Google.ID, ClientSecret: cfg.Google.Secret, RedirectURL: callback(auth.ProviderGoogle),
+		}))
+	}
+	if cfg.GitHub.Enabled() {
+		providers = append(providers, auth.NewGitHubProvider(auth.OAuthConfig{
+			ClientID: cfg.GitHub.ID, ClientSecret: cfg.GitHub.Secret, RedirectURL: callback(auth.ProviderGitHub),
+		}))
+	}
+	return auth.HandlerOptions{
+		SecureCookie: cfg.CookieSecure,
+		AppURL:       cfg.PublicURL,
+		Providers:    providers,
+		StateSecret:  []byte(cfg.JWTSecret),
+		Clock:        c,
+	}
+}
+
+type petPublisher struct {
+	broker realtime.Broker
+	rules  pets.Rules
+}
+
+func (p petPublisher) PetUpdated(ctx context.Context, pet *pets.Pet) {
+	realtime.PublishJSON(ctx, p.broker, realtime.PetTopic(pet.OwnerID), realtime.Message{
+		Type: realtime.TypePetUpdated,
+		Data: pets.NewPetView(pet, p.rules, pet.UpdatedAt),
+	})
 }
 
 type Server struct {
 	*auth.Handler
 	*PetsHandler
+	*NotifyHandler
 }
 
-type PetsHandler = pets.Handler
+type (
+	PetsHandler   = pets.Handler
+	NotifyHandler = notify.Handler
+)
 
 var _ oapi.ServerInterface = Server{}
 
-func Router(tokens httpx.TokenVerifier, srv oapi.ServerInterface) (http.Handler, error) {
+type RouterOptions struct {
+	Counter ratelimit.Counter
+	Limit   ratelimit.Limit
+	Origins []string
+}
+
+func Router(tokens httpx.TokenVerifier, srv oapi.ServerInterface, o RouterOptions) (http.Handler, error) {
 	spec, err := oapi.GetSwagger()
 	if err != nil {
 		return nil, fmt.Errorf("load OpenAPI spec: %w", err)
@@ -161,7 +216,7 @@ func Router(tokens httpx.TokenVerifier, srv oapi.ServerInterface) (http.Handler,
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
+	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer, httpx.SecurityHeaders, httpx.CSRF(o.Origins...))
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	notFound := func(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusNotFound, httpx.ErrorBody{Error: "not_found", Message: "no such endpoint"})
@@ -176,6 +231,7 @@ func Router(tokens httpx.TokenVerifier, srv oapi.ServerInterface) (http.Handler,
 		BaseRouter: r,
 		Middlewares: []oapi.MiddlewareFunc{
 			httpx.ValidateRequests(spec, BasePath),
+			httpx.RateLimit(httpx.RateLimitOptions{Counter: o.Counter, Limit: o.Limit}),
 			httpx.Authenticate(tokens, isPublic),
 		},
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
