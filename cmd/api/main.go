@@ -31,10 +31,23 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	a, err := app.New(ctx, cfg, clock.System{})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := a.Close(); err != nil {
+			slog.Error("close app", "err", err)
+		}
+	}()
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           app.New(cfg, clock.System{}),
+		Handler:           a.Handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() {

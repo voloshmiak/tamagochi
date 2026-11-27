@@ -5,56 +5,54 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/voloshmiak/tamagochi/internal/api/oapi"
 	"github.com/voloshmiak/tamagochi/internal/platform/apperr"
 	"github.com/voloshmiak/tamagochi/internal/platform/httpx"
 )
 
-const refreshCookie = "refresh_token"
+const (
+	refreshCookie = "refresh_token"
+	// refreshPath limits the refresh cookie to the endpoints that need it.
+	refreshPath = "/api/v1/auth"
+)
 
+// Handler implements the auth operations of oapi.ServerInterface.
+//
+// Tokens travel only in cookies that are httpOnly (JS cannot read them),
+// SameSite=Strict and, outside local development, Secure (NFR-SEC-03).
 type Handler struct {
 	svc          *Service
 	secureCookie bool
+	appURL       string
 }
 
-func NewHandler(svc *Service, secureCookie bool) *Handler {
-	return &Handler{svc: svc, secureCookie: secureCookie}
+// NewHandler returns the auth handler. appURL is where the browser is sent
+// after following the verification link from the email.
+func NewHandler(svc *Service, secureCookie bool, appURL string) *Handler {
+	return &Handler{svc: svc, secureCookie: secureCookie, appURL: appURL}
 }
 
-func (h *Handler) PublicRoutes(r chi.Router) {
-	r.Post("/auth/register", h.register)
-	r.Post("/auth/login", h.login)
-	r.Post("/auth/refresh", h.refresh)
-	r.Post("/auth/logout", h.logout)
-}
-
-func (h *Handler) Routes(r chi.Router) {
-	r.Get("/me", h.me)
-}
-
-type UserView struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	Nickname  string    `json:"nickname"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-func newUserView(u User) UserView {
-	return UserView{ID: u.ID, Email: u.Email, Nickname: u.Nickname, CreatedAt: u.CreatedAt}
-}
-
-func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Nickname string `json:"nickname"`
+func newUserView(u User) oapi.User {
+	return oapi.User{
+		Id:            u.ID,
+		Email:         u.Email,
+		Nickname:      u.Nickname,
+		EmailVerified: u.EmailVerified,
+		CreatedAt:     u.CreatedAt,
 	}
+}
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	var req oapi.RegisterJSONRequestBody
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	u, err := h.svc.Register(r.Context(), RegisterInput(req))
+	u, err := h.svc.Register(r.Context(), RegisterInput{
+		Email:    string(req.Email),
+		Password: req.Password,
+		Nickname: req.Nickname,
+	})
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -62,11 +60,20 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusCreated, newUserView(u))
 }
 
-func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request, params oapi.VerifyEmailParams) {
+	result := "1"
+	if err := h.svc.VerifyEmail(r.Context(), params.Token); err != nil {
+		if !errors.Is(err, apperr.ErrInvalid) {
+			httpx.Error(w, r, err)
+			return
+		}
+		result = "0"
 	}
+	http.Redirect(w, r, h.appURL+"/?verified="+result, http.StatusSeeOther)
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req oapi.LoginJSONRequestBody
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -80,7 +87,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, newUserView(u))
 }
 
-func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(refreshCookie)
 	if err != nil {
 		httpx.Error(w, r, ErrInvalidCredentials)
@@ -98,7 +105,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(refreshCookie); err == nil {
 		if err := h.svc.Logout(r.Context(), c.Value); err != nil {
 			httpx.Error(w, r, err)
@@ -109,19 +116,19 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) clearCookies(w http.ResponseWriter) {
-	for _, name := range []string{httpx.AccessCookie, refreshCookie} {
-		http.SetCookie(w, h.cookie(name, "", time.Unix(0, 0)))
-	}
-}
-
-func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	u, err := h.svc.User(r.Context(), httpx.UserID(r.Context()))
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, newUserView(u))
+}
+
+func (h *Handler) clearCookies(w http.ResponseWriter) {
+	for _, name := range []string{httpx.AccessCookie, refreshCookie} {
+		http.SetCookie(w, h.cookie(name, "", time.Unix(0, 0)))
+	}
 }
 
 func (h *Handler) setCookies(w http.ResponseWriter, t Tokens) {
@@ -132,7 +139,7 @@ func (h *Handler) setCookies(w http.ResponseWriter, t Tokens) {
 func (h *Handler) cookie(name, value string, expires time.Time) *http.Cookie {
 	path := "/"
 	if name == refreshCookie {
-		path = "/api/v1/auth"
+		path = refreshPath
 	}
 	return &http.Cookie{
 		Name:     name,
@@ -141,6 +148,6 @@ func (h *Handler) cookie(name, value string, expires time.Time) *http.Cookie {
 		Expires:  expires,
 		HttpOnly: true,
 		Secure:   h.secureCookie,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	}
 }
