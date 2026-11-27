@@ -66,6 +66,10 @@ func (r *MemoryInventoryRepository) Get(_ context.Context, ownerID string) (*Inv
 	return NewInventory(ownerID), nil
 }
 
+func (r *MemoryInventoryRepository) GetForUpdate(ctx context.Context, ownerID string) (*Inventory, error) {
+	return r.Get(ctx, ownerID)
+}
+
 func (r *MemoryInventoryRepository) Save(_ context.Context, inv *Inventory) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
