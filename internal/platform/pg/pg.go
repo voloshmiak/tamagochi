@@ -15,6 +15,7 @@ import (
 
 	"github.com/voloshmiak/tamagochi/internal/platform/pg/migrations"
 	"github.com/voloshmiak/tamagochi/internal/platform/pg/pgdb"
+	txpkg "github.com/voloshmiak/tamagochi/internal/platform/tx"
 )
 
 func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
@@ -75,13 +76,15 @@ func (m TxManager) WithinTx(ctx context.Context, fn func(ctx context.Context) er
 			_ = tx.Rollback(context.WithoutCancel(ctx))
 		}
 	}()
-	if err := fn(context.WithValue(ctx, txKey{}, tx)); err != nil {
+	txCtx, hooks := txpkg.WithHooks(context.WithValue(ctx, txKey{}, tx))
+	if err := fn(txCtx); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
 	committed = true
+	hooks.Run(ctx)
 	return nil
 }
 

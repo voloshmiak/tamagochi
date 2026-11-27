@@ -66,6 +66,8 @@ func statusOf(err error) (int, string) {
 		return http.StatusConflict, "conflict"
 	case errors.Is(err, apperr.ErrTooEarly):
 		return http.StatusTooManyRequests, "cooldown"
+	case errors.Is(err, apperr.ErrRateLimited):
+		return http.StatusTooManyRequests, "rate_limited"
 	case errors.Is(err, apperr.ErrNotImplemented):
 		return http.StatusNotImplemented, "not_implemented"
 	default:
