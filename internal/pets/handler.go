@@ -11,7 +11,6 @@ import (
 	"github.com/voloshmiak/tamagochi/internal/platform/httpx"
 )
 
-// Handler implements the pets operations of oapi.ServerInterface.
 type Handler struct {
 	svc   *Service
 	clock clock.Clock

@@ -14,7 +14,6 @@ export function App() {
   const qc = useQueryClient();
   const tab = useUI((s) => s.tab);
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
-  // Тот же ключ, что и в HomePage: запрос выполняется один раз и кэшируется.
   const pet = useQuery({ queryKey: ["pet"], queryFn: api.myPet, retry: false, enabled: !!me.data });
   const hasPet = !!pet.data;
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });

@@ -12,15 +12,6 @@ import (
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
 )
 
-// RedisRefreshStore keeps refresh sessions in Redis, so they survive API
-// restarts and are shared by every API instance. Keys expire together with
-// the tokens. Each operation is a Lua script, so consuming a token is atomic.
-//
-// Keys:
-//
-//	refresh:tok:<id>      hash {family, user, used, exp}
-//	refresh:fam:<family>  set of token ids of the session
-//	refresh:rev:<family>  marker of a revoked session
 type RedisRefreshStore struct {
 	Client *redis.Client
 	Clock  clock.Clock
@@ -32,7 +23,6 @@ const (
 	keyRevoked = "refresh:rev:"
 )
 
-// KEYS: token, family, revoked. ARGV: token id, family, user, expiry in ms.
 var saveScript = redis.NewScript(`
 if redis.call('EXISTS', KEYS[3]) == 1 then return 0 end
 redis.call('HSET', KEYS[1], 'family', ARGV[2], 'user', ARGV[3], 'used', '0', 'exp', ARGV[4])
@@ -42,7 +32,6 @@ redis.call('PEXPIREAT', KEYS[2], ARGV[4])
 return 1
 `)
 
-// KEYS: token. Returns {status, family, user, exp}; status 0 unknown, 1 ok, 2 already used.
 var consumeScript = redis.NewScript(`
 local v = redis.call('HMGET', KEYS[1], 'family', 'user', 'used', 'exp')
 if not v[1] then return {0} end
@@ -51,7 +40,6 @@ redis.call('HSET', KEYS[1], 'used', '1')
 return {1, v[1], v[2], v[4]}
 `)
 
-// KEYS: token. ARGV: token key prefix, family key prefix, revoked key prefix.
 var revokeScript = redis.NewScript(`
 local family = redis.call('HGET', KEYS[1], 'family')
 if not family then return 0 end

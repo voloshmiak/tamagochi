@@ -90,9 +90,6 @@ type TokenVerifier interface {
 
 const AccessCookie = "access_token"
 
-// Authenticate requires a valid access token on every route that isPublic
-// does not exempt, and puts the user ID into the request context. The token
-// comes from the httpOnly cookie or, for API clients, a Bearer header.
 func Authenticate(v TokenVerifier, isPublic func(r *http.Request) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

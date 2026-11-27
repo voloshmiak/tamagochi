@@ -10,8 +10,6 @@ import (
 	"github.com/voloshmiak/tamagochi/internal/platform/pg/pgdb"
 )
 
-// PgUserRepository stores users in PostgreSQL. Email and nickname uniqueness
-// is enforced by unique indexes, so concurrent registrations cannot both win.
 type PgUserRepository struct {
 	Pool *pgxpool.Pool
 }
@@ -82,7 +80,6 @@ func userOf(row pgdb.User, err error) (User, error) {
 	}, nil
 }
 
-// PgVerificationRepository stores pending email verifications in PostgreSQL.
 type PgVerificationRepository struct {
 	Pool *pgxpool.Pool
 }
@@ -99,8 +96,6 @@ func (r PgVerificationRepository) Save(ctx context.Context, v Verification) erro
 	return nil
 }
 
-// Consume deletes the verification in the same statement that reads it, so a
-// token can be used only once even under concurrent requests.
 func (r PgVerificationRepository) Consume(ctx context.Context, tokenHash string) (Verification, error) {
 	row, err := pg.Queries(ctx, r.Pool).ConsumeEmailVerification(ctx, tokenHash)
 	if pg.IsNoRows(err) {

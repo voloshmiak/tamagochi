@@ -15,14 +15,13 @@ import (
 )
 
 type Deps struct {
-	Pets      PetRepository
-	Inventory InventoryRepository
-	Tx        tx.Manager
-	Brain     Decider
-	Clock     clock.Clock
-	Rules     Rules
-	Catalog   Catalog
-	// DailyReward is granted by ClaimDailyReward; DailyRewardItems by default.
+	Pets        PetRepository
+	Inventory   InventoryRepository
+	Tx          tx.Manager
+	Brain       Decider
+	Clock       clock.Clock
+	Rules       Rules
+	Catalog     Catalog
 	DailyReward map[string]int
 }
 
@@ -140,8 +139,6 @@ func (s *Service) Inventory(ctx context.Context, ownerID string) (*Inventory, er
 	return s.d.Inventory.Get(ctx, ownerID)
 }
 
-// ClaimDailyReward grants the daily reward once per calendar day (UTC).
-// It returns the granted items and the updated inventory.
 func (s *Service) ClaimDailyReward(ctx context.Context, ownerID string) (map[string]int, *Inventory, error) {
 	now := s.d.Clock.Now()
 	var inv *Inventory

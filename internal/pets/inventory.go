@@ -23,8 +23,6 @@ type Item struct {
 	Kind ItemKind `json:"kind"`
 }
 
-// Catalog lists the items that exist in the game. The same items are seeded
-// into the items table by the database migrations.
 type Catalog map[string]Item
 
 func DefaultCatalog() Catalog {
@@ -38,13 +36,11 @@ func DefaultCatalog() Catalog {
 
 var StarterItems = map[string]int{"apple": 5, "fish": 2, "soap": 2, "ball": 1}
 
-// DailyRewardItems is what the player gets once per calendar day (FR-PET-06).
 var DailyRewardItems = map[string]int{"apple": 3, "fish": 1, "soap": 1}
 
 type Inventory struct {
-	OwnerID string
-	Items   map[string]int
-	// DailyRewardAt is when the daily reward was last claimed; zero if never.
+	OwnerID       string
+	Items         map[string]int
 	DailyRewardAt time.Time
 }
 
@@ -60,7 +56,6 @@ func (inv *Inventory) Clone() *Inventory {
 
 func (inv *Inventory) Add(itemID string, n int) { inv.Items[itemID] += n }
 
-// Counts returns the items the player actually has, without zero entries.
 func (inv *Inventory) Counts() map[string]int {
 	out := make(map[string]int, len(inv.Items))
 	for itemID, n := range inv.Items {
@@ -71,7 +66,6 @@ func (inv *Inventory) Counts() map[string]int {
 	return out
 }
 
-// ErrNoItem is returned when an action needs an item the player does not have.
 var ErrNoItem = fmt.Errorf("%w: no item", apperr.ErrConflict)
 
 func (inv *Inventory) ConsumeKind(kind ItemKind, catalog Catalog) (Item, error) {
@@ -86,8 +80,6 @@ func (inv *Inventory) ConsumeKind(kind ItemKind, catalog Catalog) (Item, error) 
 	return Item{}, fmt.Errorf("%w: no %s in inventory", ErrNoItem, kind)
 }
 
-// DailyRewardIn returns how long until the daily reward can be claimed again;
-// zero means it is available now. The reward resets at midnight UTC.
 func (inv *Inventory) DailyRewardIn(now time.Time) time.Duration {
 	if inv.DailyRewardAt.IsZero() {
 		return 0
@@ -96,8 +88,6 @@ func (inv *Inventory) DailyRewardIn(now time.Time) time.Duration {
 	return max(next.Sub(now), 0)
 }
 
-// ClaimDaily adds the daily reward to the inventory. It fails with a
-// *RewardTooEarlyError if the reward was already claimed today.
 func (inv *Inventory) ClaimDaily(reward map[string]int, now time.Time) error {
 	if left := inv.DailyRewardIn(now); left > 0 {
 		return &RewardTooEarlyError{Left: left}

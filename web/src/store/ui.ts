@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEMO } from "../features/home/demo";
 
-export const today = () => new Date().toLocaleDateString("sv"); // YYYY-MM-DD, локальна дата
+export const today = () => new Date().toLocaleDateString("sv");
 
 export type Tab = "room" | "shop" | "play" | "diary";
 export interface Note {
@@ -18,7 +18,6 @@ interface UIState {
   volume: number;
   setVolume: (v: number) => void;
 
-  // Local demo state: shop, quests, mini-games, diary and settings have no backend yet.
   berries: number;
   addBerries: (n: number) => void;
   owned: Record<string, number>;
@@ -89,7 +88,6 @@ export const useUI = create<UIState>()(
     }),
     {
       name: "tamagochi-ui",
-      // v1: одноразово скидаємо збережену гучність на тихий фон (0.15)
       version: 1,
       migrate: (persisted) => ({ ...(persisted as object), volume: 0.15 }) as UIState,
       partialize: (s) => ({

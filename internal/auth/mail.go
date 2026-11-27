@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// LogMailer writes the verification link to the log instead of sending it.
-// It is used when no SMTP server is configured.
 type LogMailer struct{}
 
 func (LogMailer) SendVerification(ctx context.Context, email, link string) error {
@@ -21,11 +19,8 @@ func (LogMailer) SendVerification(ctx context.Context, email, link string) error
 	return nil
 }
 
-// SMTPMailer sends emails through an SMTP server. Username and Password are
-// optional; without them the server must accept mail without authentication
-// (as Mailpit does in the local Docker Compose setup).
 type SMTPMailer struct {
-	Addr     string // host:port
+	Addr     string
 	From     string
 	Username string
 	Password string
@@ -47,7 +42,6 @@ func (m SMTPMailer) send(to, subject, body string) error {
 	if strings.ContainsAny(to, "\r\n") {
 		return fmt.Errorf("invalid recipient %q", to)
 	}
-	// The envelope sender must be a bare address; the header keeps the name.
 	from, err := mail.ParseAddress(m.From)
 	if err != nil {
 		return fmt.Errorf("SMTP_FROM: %w", err)

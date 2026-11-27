@@ -12,22 +12,15 @@ import (
 
 const (
 	refreshCookie = "refresh_token"
-	// refreshPath limits the refresh cookie to the endpoints that need it.
-	refreshPath = "/api/v1/auth"
+	refreshPath   = "/api/v1/auth"
 )
 
-// Handler implements the auth operations of oapi.ServerInterface.
-//
-// Tokens travel only in cookies that are httpOnly (JS cannot read them),
-// SameSite=Strict and, outside local development, Secure (NFR-SEC-03).
 type Handler struct {
 	svc          *Service
 	secureCookie bool
 	appURL       string
 }
 
-// NewHandler returns the auth handler. appURL is where the browser is sent
-// after following the verification link from the email.
 func NewHandler(svc *Service, secureCookie bool, appURL string) *Handler {
 	return &Handler{svc: svc, secureCookie: secureCookie, appURL: appURL}
 }

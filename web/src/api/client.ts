@@ -1,7 +1,6 @@
 import createClient from "openapi-fetch";
 import type { components, paths } from "./schema";
 
-// Types come from api/openapi.yaml: run `npm run generate:api` after changing the contract.
 export type Pet = components["schemas"]["Pet"];
 export type User = components["schemas"]["User"];
 export type Action = components["schemas"]["Action"];

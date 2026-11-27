@@ -14,7 +14,6 @@ import (
 	"github.com/voloshmiak/tamagochi/internal/platform/id"
 )
 
-// VerificationTTL is how long the link from the verification email stays valid.
 const VerificationTTL = 48 * time.Hour
 
 type Deps struct {
@@ -25,9 +24,7 @@ type Deps struct {
 	Mailer        Mailer
 	Refresh       RefreshStore
 	Clock         clock.Clock
-	// VerifyURL is the absolute URL of the verification endpoint; the token is
-	// appended as the "token" query parameter.
-	VerifyURL string
+	VerifyURL     string
 }
 
 type Service struct {
@@ -54,8 +51,6 @@ func NewService(d Deps) *Service {
 	}
 }
 
-// Register creates the account and sends the email verification link
-// (FR-AUTH-01). A failure to send the email does not undo the registration.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (User, error) {
 	in, err := in.normalize()
 	if err != nil {
@@ -87,8 +82,6 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (User, error) 
 	return u, nil
 }
 
-// VerifyEmail confirms the address of the user the token was issued to.
-// Each token works once.
 func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 	v, err := s.verifications.Consume(ctx, hashToken(token))
 	if err != nil {
@@ -104,8 +97,6 @@ func (s *Service) verifyLink(token string) string {
 	return s.verifyURL + "?" + url.Values{"token": {token}}.Encode()
 }
 
-// hashToken keeps only a digest of the token in storage, so a leaked table
-// does not let anyone verify addresses.
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])

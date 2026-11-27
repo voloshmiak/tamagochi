@@ -1,8 +1,3 @@
-// Command migrate applies the database migrations without starting the API:
-//
-//	DATABASE_URL=postgres://... go run ./cmd/migrate
-//
-// The API does the same on start unless MIGRATE_ON_START=false.
 package main
 
 import (

@@ -15,8 +15,6 @@ import (
 	"github.com/voloshmiak/tamagochi/internal/platform/pg/pgdb"
 )
 
-// PgPetRepository stores pets in PostgreSQL. Inside pg.TxManager.WithinTx
-// it uses the transaction from the context.
 type PgPetRepository struct {
 	Pool *pgxpool.Pool
 }
@@ -62,8 +60,6 @@ func (r PgPetRepository) ByOwner(ctx context.Context, ownerID string) (*Pet, err
 	return r.load(ctx, ownerID, false)
 }
 
-// ByOwnerForUpdate locks the pet row (SELECT ... FOR UPDATE) until the
-// transaction ends, so concurrent actions on one pet are serialized.
 func (r PgPetRepository) ByOwnerForUpdate(ctx context.Context, ownerID string) (*Pet, error) {
 	return r.load(ctx, ownerID, true)
 }
@@ -133,7 +129,6 @@ func (r PgPetRepository) Save(ctx context.Context, p *Pet) error {
 	return nil
 }
 
-// PgInventoryRepository stores inventories in PostgreSQL.
 type PgInventoryRepository struct {
 	Pool *pgxpool.Pool
 }
@@ -154,8 +149,6 @@ func (r PgInventoryRepository) Get(ctx context.Context, ownerID string) (*Invent
 	return inv, r.loadItems(ctx, q, inv)
 }
 
-// GetForUpdate creates the inventory row if it is missing and locks it until
-// the transaction ends.
 func (r PgInventoryRepository) GetForUpdate(ctx context.Context, ownerID string) (*Inventory, error) {
 	q := pg.Queries(ctx, r.Pool)
 	if err := q.EnsureInventory(ctx, ownerID); err != nil {
@@ -183,8 +176,6 @@ func (r PgInventoryRepository) loadItems(ctx context.Context, q *pgdb.Queries, i
 	return nil
 }
 
-// Save replaces the stored items with the inventory's current counts. Call it
-// inside a transaction so the replacement is atomic.
 func (r PgInventoryRepository) Save(ctx context.Context, inv *Inventory) error {
 	q := pg.Queries(ctx, r.Pool)
 	if err := q.EnsureInventory(ctx, inv.OwnerID); err != nil {

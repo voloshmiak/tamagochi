@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// NFR-SEC-03: access token lives at most 15 minutes, refresh at most 30 days.
 const (
 	MaxAccessTTL  = 15 * time.Minute
 	MaxRefreshTTL = 30 * 24 * time.Hour
@@ -25,24 +24,16 @@ type Config struct {
 	RefreshTTL time.Duration
 	BrainSeed  uint64
 
-	// PublicURL is the address users open in the browser, without a trailing
-	// slash. Links in emails point to it.
-	PublicURL string
-	// CookieSecure sets the Secure attribute on session cookies. It is on
-	// everywhere except APP_ENV=dev unless COOKIE_SECURE says otherwise.
+	PublicURL    string
 	CookieSecure bool
 
-	// DatabaseURL selects PostgreSQL; when empty the API keeps data in memory.
-	DatabaseURL string
-	// MigrateOnStart applies pending migrations when the API starts.
+	DatabaseURL    string
 	MigrateOnStart bool
-	// RedisURL selects Redis for refresh sessions; when empty they are kept in memory.
-	RedisURL string
+	RedisURL       string
 
 	SMTP SMTP
 }
 
-// SMTP configures outgoing email. When Addr is empty emails are only logged.
 type SMTP struct {
 	Addr     string
 	From     string

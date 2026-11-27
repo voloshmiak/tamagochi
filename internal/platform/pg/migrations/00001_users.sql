@@ -1,5 +1,3 @@
--- Облікові записи та підтвердження email (FR-AUTH-01).
-
 -- +goose Up
 CREATE TABLE users (
     id             text        PRIMARY KEY,
@@ -10,11 +8,9 @@ CREATE TABLE users (
     created_at     timestamptz NOT NULL
 );
 
--- Адреса зберігається в нижньому регістрі; нікнейм унікальний без урахування регістру.
 CREATE UNIQUE INDEX users_email_key ON users (email);
 CREATE UNIQUE INDEX users_nickname_key ON users (lower(nickname));
 
--- Зберігається лише SHA-256 від токена з листа.
 CREATE TABLE email_verifications (
     token_hash text        PRIMARY KEY,
     user_id    text        NOT NULL REFERENCES users (id) ON DELETE CASCADE,

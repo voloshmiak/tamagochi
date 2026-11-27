@@ -1,6 +1,3 @@
-// Package app is the composition root: it picks the adapters (PostgreSQL and
-// Redis, or in-memory ones for a quick local run), wires the modules and
-// builds the HTTP router from the OpenAPI contract.
 package app
 
 import (
@@ -26,16 +23,13 @@ import (
 	"github.com/voloshmiak/tamagochi/internal/platform/tx"
 )
 
-// BasePath is the prefix of every API route (servers[0].url in the spec).
 const BasePath = "/api/v1"
 
-// App is the wired application.
 type App struct {
 	Handler http.Handler
 	closers []func() error
 }
 
-// Close releases the database and Redis connections.
 func (a *App) Close() error {
 	var errs []error
 	for _, c := range a.closers {
@@ -44,9 +38,6 @@ func (a *App) Close() error {
 	return errors.Join(errs...)
 }
 
-// New wires the application. With cfg.DatabaseURL set it connects to
-// PostgreSQL and, unless disabled, applies pending migrations; with
-// cfg.RedisURL set refresh sessions are kept in Redis.
 func New(ctx context.Context, cfg config.Config, c clock.Clock) (*App, error) {
 	a := &App{}
 	st, err := a.storage(ctx, cfg, c)
@@ -150,22 +141,15 @@ func postgresStorage(pool *pgxpool.Pool) storage {
 	}
 }
 
-// Server implements oapi.ServerInterface by combining the module handlers.
-// A new operation in the spec fails to compile until a module implements it.
 type Server struct {
 	*auth.Handler
 	*PetsHandler
 }
 
-// PetsHandler is an alias that lets Server embed both module handlers,
-// which share the type name Handler.
 type PetsHandler = pets.Handler
 
 var _ oapi.ServerInterface = Server{}
 
-// Router builds the HTTP handler: routes come from the generated
-// oapi.ServerInterface; every request is first authenticated (unless the spec
-// marks the operation `security: []`) and then validated against the spec.
 func Router(tokens httpx.TokenVerifier, srv oapi.ServerInterface) (http.Handler, error) {
 	spec, err := oapi.GetSwagger()
 	if err != nil {
@@ -190,7 +174,6 @@ func Router(tokens httpx.TokenVerifier, srv oapi.ServerInterface) (http.Handler,
 	return oapi.HandlerWithOptions(srv, oapi.ChiServerOptions{
 		BaseURL:    BasePath,
 		BaseRouter: r,
-		// The last middleware runs first: authenticate, then validate.
 		Middlewares: []oapi.MiddlewareFunc{
 			httpx.ValidateRequests(spec, BasePath),
 			httpx.Authenticate(tokens, isPublic),

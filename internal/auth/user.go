@@ -35,7 +35,7 @@ func (in RegisterInput) normalize() (RegisterInput, error) {
 	if utf8.RuneCountInString(in.Password) < 8 {
 		return in, fmt.Errorf("%w: password must be at least 8 characters", apperr.ErrInvalid)
 	}
-	if len(in.Password) > 72 { // bcrypt ignores everything after 72 bytes
+	if len(in.Password) > 72 {
 		return in, fmt.Errorf("%w: password must be at most 72 bytes", apperr.ErrInvalid)
 	}
 	in.Nickname = strings.TrimSpace(in.Nickname)
@@ -62,16 +62,12 @@ type UserRepository interface {
 	MarkEmailVerified(ctx context.Context, id string) error
 }
 
-// Verification is a pending email confirmation. Only the SHA-256 digest of
-// the token from the email is stored.
 type Verification struct {
 	TokenHash string
 	UserID    string
 	ExpiresAt time.Time
 }
 
-// VerificationRepository stores pending verifications. Consume deletes the
-// verification and returns it, or fails with ErrVerificationInvalid.
 type VerificationRepository interface {
 	Save(ctx context.Context, v Verification) error
 	Consume(ctx context.Context, tokenHash string) (Verification, error)
@@ -97,6 +93,5 @@ type TokenIssuer interface {
 }
 
 type Mailer interface {
-	// SendVerification emails the link that confirms the address.
 	SendVerification(ctx context.Context, email, link string) error
 }
