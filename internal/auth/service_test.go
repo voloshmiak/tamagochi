@@ -23,7 +23,16 @@ func newTestService(t *testing.T) (*Service, *clock.Manual) {
 		RefreshTTL: 30 * 24 * time.Hour,
 		Clock:      clk,
 	}
-	svc := NewService(NewMemoryUserRepository(), BcryptHasher{Cost: 4}, tokens, LogMailer{}, NewMemoryRefreshStore(clk), clk)
+	svc := NewService(Deps{
+		Users:         NewMemoryUserRepository(),
+		Verifications: NewMemoryVerificationRepository(),
+		Hasher:        BcryptHasher{Cost: 4},
+		Tokens:        tokens,
+		Mailer:        LogMailer{},
+		Refresh:       NewMemoryRefreshStore(clk),
+		Clock:         clk,
+		VerifyURL:     "https://example.test/api/v1/auth/verify",
+	})
 	in := RegisterInput{Email: testEmail, Password: testPassword, Nickname: "misha"}
 	if _, err := svc.Register(context.Background(), in); err != nil {
 		t.Fatal(err)

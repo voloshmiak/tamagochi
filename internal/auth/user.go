@@ -35,6 +35,9 @@ func (in RegisterInput) normalize() (RegisterInput, error) {
 	if utf8.RuneCountInString(in.Password) < 8 {
 		return in, fmt.Errorf("%w: password must be at least 8 characters", apperr.ErrInvalid)
 	}
+	if len(in.Password) > 72 { // bcrypt ignores everything after 72 bytes
+		return in, fmt.Errorf("%w: password must be at most 72 bytes", apperr.ErrInvalid)
+	}
 	in.Nickname = strings.TrimSpace(in.Nickname)
 	if n := utf8.RuneCountInString(in.Nickname); n < 3 || n > 20 {
 		return in, fmt.Errorf("%w: nickname must be 3-20 characters", apperr.ErrInvalid)
@@ -47,6 +50,8 @@ var (
 	ErrEmailTaken         = fmt.Errorf("%w: email already registered", apperr.ErrConflict)
 	ErrNicknameTaken      = fmt.Errorf("%w: nickname already taken", apperr.ErrConflict)
 	ErrInvalidCredentials = fmt.Errorf("%w: invalid email or password", apperr.ErrUnauthorized)
+
+	ErrVerificationInvalid = fmt.Errorf("%w: verification link is invalid or expired", apperr.ErrInvalid)
 )
 
 type UserRepository interface {
@@ -54,6 +59,22 @@ type UserRepository interface {
 	ByID(ctx context.Context, id string) (User, error)
 	ByEmail(ctx context.Context, email string) (User, error)
 	ByNickname(ctx context.Context, nickname string) (User, error)
+	MarkEmailVerified(ctx context.Context, id string) error
+}
+
+// Verification is a pending email confirmation. Only the SHA-256 digest of
+// the token from the email is stored.
+type Verification struct {
+	TokenHash string
+	UserID    string
+	ExpiresAt time.Time
+}
+
+// VerificationRepository stores pending verifications. Consume deletes the
+// verification and returns it, or fails with ErrVerificationInvalid.
+type VerificationRepository interface {
+	Save(ctx context.Context, v Verification) error
+	Consume(ctx context.Context, tokenHash string) (Verification, error)
 }
 
 type PasswordHasher interface {
@@ -76,5 +97,6 @@ type TokenIssuer interface {
 }
 
 type Mailer interface {
-	SendVerification(ctx context.Context, email, token string) error
+	// SendVerification emails the link that confirms the address.
+	SendVerification(ctx context.Context, email, link string) error
 }

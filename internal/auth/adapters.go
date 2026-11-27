@@ -5,16 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/voloshmiak/tamagochi/internal/platform/id"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
+	"github.com/voloshmiak/tamagochi/internal/platform/id"
 )
 
 type BcryptHasher struct{ Cost int }
@@ -100,13 +99,6 @@ func (j *JWTIssuer) VerifyRefresh(token string) (string, string, error) {
 	return c.Subject, c.ID, nil
 }
 
-type LogMailer struct{}
-
-func (LogMailer) SendVerification(ctx context.Context, email, token string) error {
-	slog.InfoContext(ctx, "verification email", "to", email, "token", token)
-	return nil
-}
-
 type MemoryUserRepository struct {
 	mu    sync.RWMutex
 	users map[string]User
@@ -140,6 +132,18 @@ func (r *MemoryUserRepository) ByID(_ context.Context, id string) (User, error) 
 	return User{}, ErrUserNotFound
 }
 
+func (r *MemoryUserRepository) MarkEmailVerified(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.users[id]
+	if !ok {
+		return ErrUserNotFound
+	}
+	u.EmailVerified = true
+	r.users[id] = u
+	return nil
+}
+
 func (r *MemoryUserRepository) find(match func(User) bool) (User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -161,4 +165,31 @@ func (r *MemoryUserRepository) ByNickname(_ context.Context, nickname string) (U
 		return User{}, fmt.Errorf("%w (nickname %q)", err, nickname)
 	}
 	return u, nil
+}
+
+type MemoryVerificationRepository struct {
+	mu     sync.Mutex
+	byHash map[string]Verification
+}
+
+func NewMemoryVerificationRepository() *MemoryVerificationRepository {
+	return &MemoryVerificationRepository{byHash: make(map[string]Verification)}
+}
+
+func (r *MemoryVerificationRepository) Save(_ context.Context, v Verification) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byHash[v.TokenHash] = v
+	return nil
+}
+
+func (r *MemoryVerificationRepository) Consume(_ context.Context, tokenHash string) (Verification, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, ok := r.byHash[tokenHash]
+	if !ok {
+		return Verification{}, ErrVerificationInvalid
+	}
+	delete(r.byHash, tokenHash)
+	return v, nil
 }
