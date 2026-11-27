@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { ITEM_EMOJI } from "../features/home/demo";
@@ -7,7 +7,13 @@ import { Panel } from "./Panel";
 
 export function Backpack() {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const inv = useQuery({ queryKey: ["inventory"], queryFn: api.inventory, retry: false });
+  const reward = useMutation({
+    mutationFn: api.claimDailyReward,
+    onSuccess: (res) => qc.setQueryData(["inventory"], res.inventory),
+  });
+  const rewardReady = inv.data?.dailyRewardIn === 0;
   const owned = useUI((s) => s.owned);
   const merged: Record<string, number> = { ...(inv.data?.items ?? {}) };
   for (const [id, n] of Object.entries(owned)) merged[id] = (merged[id] ?? 0) + n;
@@ -26,6 +32,16 @@ export function Backpack() {
             </li>
           ))}
         </ul>
+      )}
+      {inv.data && (
+        <button
+          type="button"
+          className="mt-3 w-full rounded-xl bg-canvas px-3 py-2 text-sm font-bold disabled:opacity-50"
+          disabled={!rewardReady || reward.isPending}
+          onClick={() => reward.mutate()}
+        >
+          🎁 {rewardReady ? t("backpack.dailyReward") : t("backpack.dailyRewardDone")}
+        </button>
       )}
     </Panel>
   );

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"maps"
+	"time"
 
 	"github.com/voloshmiak/tamagochi/internal/brain"
 	"github.com/voloshmiak/tamagochi/internal/platform/clock"
@@ -20,6 +22,8 @@ type Deps struct {
 	Clock     clock.Clock
 	Rules     Rules
 	Catalog   Catalog
+	// DailyReward is granted by ClaimDailyReward; DailyRewardItems by default.
+	DailyReward map[string]int
 }
 
 type Service struct {
@@ -32,6 +36,9 @@ func NewService(d Deps) *Service {
 	}
 	if d.Catalog == nil {
 		d.Catalog = DefaultCatalog()
+	}
+	if d.DailyReward == nil {
+		d.DailyReward = DailyRewardItems
 	}
 	return &Service{d: d}
 }
@@ -100,7 +107,7 @@ func (s *Service) Perform(ctx context.Context, ownerID string, action Action) (A
 			return &CooldownError{Action: action, Left: left}
 		}
 		if kind := rule.RequiredItem(); kind != "" {
-			inv, err := s.d.Inventory.Get(ctx, ownerID)
+			inv, err := s.d.Inventory.GetForUpdate(ctx, ownerID)
 			if err != nil {
 				return err
 			}
@@ -132,6 +139,29 @@ func (s *Service) Perform(ctx context.Context, ownerID string, action Action) (A
 func (s *Service) Inventory(ctx context.Context, ownerID string) (*Inventory, error) {
 	return s.d.Inventory.Get(ctx, ownerID)
 }
+
+// ClaimDailyReward grants the daily reward once per calendar day (UTC).
+// It returns the granted items and the updated inventory.
+func (s *Service) ClaimDailyReward(ctx context.Context, ownerID string) (map[string]int, *Inventory, error) {
+	now := s.d.Clock.Now()
+	var inv *Inventory
+	err := s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
+		var err error
+		if inv, err = s.d.Inventory.GetForUpdate(ctx, ownerID); err != nil {
+			return err
+		}
+		if err := inv.ClaimDaily(s.d.DailyReward, now); err != nil {
+			return err
+		}
+		return s.d.Inventory.Save(ctx, inv)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return maps.Clone(s.d.DailyReward), inv, nil
+}
+
+func (s *Service) Now() time.Time { return s.d.Clock.Now() }
 
 func seedOf(s string) uint64 {
 	h := fnv.New64a()

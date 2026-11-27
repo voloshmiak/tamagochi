@@ -63,4 +63,5 @@ export const api = {
   createPet: (name: string, appearance: string) => unwrap(http.POST("/pets", { body: { name, appearance } })),
   act: (action: Action) => unwrap(http.POST("/pets/me/actions", { body: { action } })),
   inventory: () => unwrap(http.GET("/inventory")),
+  claimDailyReward: () => unwrap(http.POST("/inventory/daily-reward")),
 };
