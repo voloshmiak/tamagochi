@@ -23,7 +23,14 @@
     "login": "Log in",
     "register": "Sign up",
     "toRegister": "No account yet? Sign up",
-    "toLogin": "Already have an account? Log in"
+    "toLogin": "Already have an account? Log in",
+    "or": "or",
+    "withGoogle": "Continue with Google",
+    "withGithub": "Continue with GitHub",
+    "oauthError": "Could not sign in with the provider. Please try again.",
+    "oauthDenied": "Sign-in was cancelled.",
+    "oauthNoEmail": "The provider did not share a verified email.",
+    "tooMany": "Too many attempts. Try again in {{minutes}} min."
   },
   "pet": {
     "createTitle": "Meet your pet",
@@ -35,7 +42,12 @@
       "cat": "Cat"
     },
     "traits": "Personality",
-    "state": { "happy": "Happy", "hungry": "Hungry", "sleepy": "Sleepy", "dirty": "Dirty" },
+    "state": {
+      "happy": "Happy",
+      "hungry": "Hungry",
+      "sleepy": "Sleepy",
+      "dirty": "Dirty"
+    },
     "health": "Well-being",
     "status": {
       "great": "Great",
@@ -107,7 +119,15 @@
   },
   "week": {
     "title": "Care index this week",
-    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    "days": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ]
   },
   "footer": {
     "rights": "© {{year}} Tamagochi. Your quiet island of joy and warmth.",
@@ -156,18 +176,38 @@
     "sound": "In-game sound",
     "volume": "Volume",
     "notifications": "Notifications",
-    "notificationsHint": "We'll remind you when your pet is hungry",
+    "notificationsHint": "Push notifications on this device",
     "quiet": "Quiet hours",
-    "quietHint": "No notifications at night",
+    "quietHint": "No notifications at the chosen time",
     "entries": [
-      { "when": "Today, 14:20", "text": "Your pet ate a strawberry and purred happily." },
-      { "when": "Today, 11:05", "text": "We played with a feather, plenty of energy left." },
-      { "when": "Yesterday, 21:40", "text": "Your pet fell asleep sweetly in its room." }
+      {
+        "when": "Today, 14:20",
+        "text": "Your pet ate a strawberry and purred happily."
+      },
+      {
+        "when": "Today, 11:05",
+        "text": "We played with a feather, plenty of energy left."
+      },
+      {
+        "when": "Yesterday, 21:40",
+        "text": "Your pet fell asleep sweetly in its room."
+      }
     ],
     "write": "New entry",
     "placeholder": "What happened today?",
     "add": "Save",
     "from": "From",
-    "to": "To"
+    "to": "To",
+    "pushUnsupported": "This browser does not support push notifications",
+    "pushDenied": "Notifications are blocked in the browser settings",
+    "pushOff": "Push is turned off on the server",
+    "kinds": "Notify me about",
+    "kind": {
+      "low_stat": "My pet needs something",
+      "friend_request": "Friend requests",
+      "trade": "Trade offers"
+    },
+    "dailyLimit": "At most 5 notifications a day",
+    "pushCert": "The browser does not trust the site certificate, so push is unavailable. Trust Caddy's root certificate (see README)."
   }
 }

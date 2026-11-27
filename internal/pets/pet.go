@@ -1,14 +1,16 @@
 package pets
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
-	"strings"
+	"slices"
 	"time"
 	"unicode/utf8"
 
 	"github.com/voloshmiak/tamagochi/internal/brain"
 	"github.com/voloshmiak/tamagochi/internal/platform/apperr"
+	"github.com/voloshmiak/tamagochi/internal/platform/text"
 )
 
 type Pet struct {
@@ -24,12 +26,15 @@ type Pet struct {
 }
 
 func NewPet(id, ownerID, name, appearance string, traits brain.Traits, now time.Time) (*Pet, error) {
-	name = strings.TrimSpace(name)
+	name, ok := text.Clean(name)
+	if !ok {
+		return nil, fmt.Errorf("%w: pet name contains forbidden characters", apperr.ErrInvalid)
+	}
 	if n := utf8.RuneCountInString(name); n < 2 || n > 20 {
 		return nil, fmt.Errorf("%w: pet name must be 2-20 characters", apperr.ErrInvalid)
 	}
-	if appearance == "" {
-		return nil, fmt.Errorf("%w: appearance is required", apperr.ErrInvalid)
+	if !validAppearance(appearance) {
+		return nil, fmt.Errorf("%w: appearance must be 1-32 latin letters, digits or dashes", apperr.ErrInvalid)
 	}
 	return &Pet{
 		ID:          id,
@@ -58,6 +63,36 @@ func (p *Pet) Recompute(now time.Time) {
 	}
 	p.Stats = p.Stats.add(DecayPerHour.scale(-elapsed.Hours())).clamp()
 	p.UpdatedAt = now
+}
+
+func (p *Pet) TimeToThreshold(threshold float64) (time.Duration, StatName, bool) {
+	var (
+		best  time.Duration
+		stat  StatName
+		found bool
+	)
+	for _, n := range StatNames {
+		v, rate := p.Stats.Get(n), DecayPerHour.Get(n)
+		if v < threshold || rate <= 0 {
+			continue
+		}
+		d := time.Duration((v - threshold) / rate * float64(time.Hour))
+		if !found || d < best {
+			best, stat, found = d, n, true
+		}
+	}
+	return best, stat, found
+}
+
+func (p *Pet) LowStats(threshold float64) []StatName {
+	var out []StatName
+	for _, n := range StatNames {
+		if p.Stats.Get(n) < threshold {
+			out = append(out, n)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b StatName) int { return cmp.Compare(p.Stats.Get(a), p.Stats.Get(b)) })
+	return out
 }
 
 func (p *Pet) CooldownLeft(rule ActionRule, now time.Time) time.Duration {
@@ -100,3 +135,15 @@ func (e *CooldownError) Error() string {
 func (e *CooldownError) Unwrap() error { return apperr.ErrTooEarly }
 
 func (e *CooldownError) RetryAfter() time.Duration { return e.Left }
+
+func validAppearance(s string) bool {
+	if len(s) == 0 || len(s) > 32 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}

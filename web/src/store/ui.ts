@@ -29,13 +29,6 @@ interface UIState {
   claimChest: () => void;
   notes: Note[];
   addNote: (text: string, when: string) => void;
-  notifications: boolean;
-  toggleNotifications: () => void;
-  quiet: boolean;
-  toggleQuiet: () => void;
-  quietFrom: string;
-  quietTo: string;
-  setQuietHours: (from: string, to: string) => void;
 }
 
 export const useUI = create<UIState>()(
@@ -78,13 +71,6 @@ export const useUI = create<UIState>()(
       claimChest: () => set((s) => ({ berries: s.berries + DEMO.chestReward, chestClaimed: true })),
       notes: [],
       addNote: (text, when) => set((s) => ({ notes: [{ when, text }, ...s.notes] })),
-      notifications: true,
-      toggleNotifications: () => set((s) => ({ notifications: !s.notifications })),
-      quiet: false,
-      toggleQuiet: () => set((s) => ({ quiet: !s.quiet })),
-      quietFrom: "22:00",
-      quietTo: "08:00",
-      setQuietHours: (quietFrom, quietTo) => set({ quietFrom, quietTo }),
     }),
     {
       name: "tamagochi-ui",
@@ -99,10 +85,6 @@ export const useUI = create<UIState>()(
         questProgress: s.questProgress,
         chestClaimed: s.chestClaimed,
         notes: s.notes,
-        notifications: s.notifications,
-        quiet: s.quiet,
-        quietFrom: s.quietFrom,
-        quietTo: s.quietTo,
       }),
     },
   ),

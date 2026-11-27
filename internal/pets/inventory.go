@@ -66,7 +66,40 @@ func (inv *Inventory) Counts() map[string]int {
 	return out
 }
 
-var ErrNoItem = fmt.Errorf("%w: no item", apperr.ErrConflict)
+var (
+	ErrNoItem   = fmt.Errorf("%w: no item", apperr.ErrConflict)
+	ErrBadItems = fmt.Errorf("%w: item list", apperr.ErrInvalid)
+)
+
+func (c Catalog) Validate(items map[string]int) error {
+	for itemID, n := range items {
+		if _, ok := c[itemID]; !ok {
+			return fmt.Errorf("%w: unknown item %q", ErrBadItems, itemID)
+		}
+		if n <= 0 {
+			return fmt.Errorf("%w: quantity of %q must be positive", ErrBadItems, itemID)
+		}
+	}
+	return nil
+}
+
+func (inv *Inventory) Take(items map[string]int) error {
+	for _, itemID := range slices.Sorted(maps.Keys(items)) {
+		if have, need := inv.Items[itemID], items[itemID]; have < need {
+			return fmt.Errorf("%w: %s has %d of %q, needs %d", ErrNoItem, inv.OwnerID, have, itemID, need)
+		}
+	}
+	for itemID, n := range items {
+		inv.Items[itemID] -= n
+	}
+	return nil
+}
+
+func (inv *Inventory) Put(items map[string]int) {
+	for itemID, n := range items {
+		inv.Add(itemID, n)
+	}
+}
 
 func (inv *Inventory) ConsumeKind(kind ItemKind, catalog Catalog) (Item, error) {
 	for _, itemID := range slices.Sorted(maps.Keys(inv.Items)) {

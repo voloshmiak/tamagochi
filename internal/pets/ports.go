@@ -3,6 +3,7 @@ package pets
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/voloshmiak/tamagochi/internal/brain"
 	"github.com/voloshmiak/tamagochi/internal/platform/apperr"
@@ -29,4 +30,12 @@ type InventoryRepository interface {
 
 type Decider interface {
 	ReactionFor(in brain.Input, ev brain.Event) brain.Reaction
+}
+
+type LowStatScheduler interface {
+	ScheduleLowStatCheck(ctx context.Context, ownerID string, version, at time.Time) error
+}
+
+type Publisher interface {
+	PetUpdated(ctx context.Context, p *Pet)
 }

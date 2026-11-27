@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/voloshmiak/tamagochi/internal/brain"
@@ -23,6 +25,8 @@ type Deps struct {
 	Rules       Rules
 	Catalog     Catalog
 	DailyReward map[string]int
+	LowStat     LowStatScheduler
+	Publisher   Publisher
 }
 
 type Service struct {
@@ -62,10 +66,12 @@ func (s *Service) Create(ctx context.Context, ownerID, name, appearance string) 
 			return err
 		}
 		inv := NewInventory(ownerID)
-		for itemID, n := range StarterItems {
-			inv.Add(itemID, n)
+		inv.Put(StarterItems)
+		if err := s.d.Inventory.Save(ctx, inv); err != nil {
+			return err
 		}
-		return s.d.Inventory.Save(ctx, inv)
+		s.afterSave(ctx, pet)
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -125,6 +131,7 @@ func (s *Service) Perform(ctx context.Context, ownerID string, action Action) (A
 		if err := s.d.Pets.Save(ctx, pet); err != nil {
 			return err
 		}
+		s.afterSave(ctx, pet)
 		res.Pet, res.Points = pet, rule.Points()
 		return nil
 	})
@@ -159,6 +166,86 @@ func (s *Service) ClaimDailyReward(ctx context.Context, ownerID string) (map[str
 }
 
 func (s *Service) Now() time.Time { return s.d.Clock.Now() }
+
+func (s *Service) afterSave(ctx context.Context, pet *Pet) {
+	snapshot := pet.Clone()
+	tx.AfterCommit(ctx, func(ctx context.Context) {
+		if s.d.LowStat != nil {
+			if wait, _, ok := snapshot.TimeToThreshold(LowStatThreshold); ok {
+				at := snapshot.UpdatedAt.Add(wait)
+				if err := s.d.LowStat.ScheduleLowStatCheck(ctx, snapshot.OwnerID, snapshot.UpdatedAt, at); err != nil {
+					slog.ErrorContext(ctx, "schedule low stat check", "owner", snapshot.OwnerID, "err", err)
+				}
+			}
+		}
+		if s.d.Publisher != nil {
+			s.d.Publisher.PetUpdated(ctx, snapshot)
+		}
+	})
+}
+
+func (s *Service) ReserveItems(ctx context.Context, owner string, items map[string]int) error {
+	if err := s.d.Catalog.Validate(items); err != nil {
+		return err
+	}
+	return s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
+		inv, err := s.d.Inventory.GetForUpdate(ctx, owner)
+		if err != nil {
+			return err
+		}
+		if err := inv.Take(items); err != nil {
+			return err
+		}
+		return s.d.Inventory.Save(ctx, inv)
+	})
+}
+
+func (s *Service) ReleaseItems(ctx context.Context, owner string, items map[string]int) error {
+	if err := s.d.Catalog.Validate(items); err != nil {
+		return err
+	}
+	return s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
+		inv, err := s.d.Inventory.GetForUpdate(ctx, owner)
+		if err != nil {
+			return err
+		}
+		inv.Put(items)
+		return s.d.Inventory.Save(ctx, inv)
+	})
+}
+
+func (s *Service) ExchangeItems(ctx context.Context, from, to string, give, want map[string]int) error {
+	if from == to {
+		return fmt.Errorf("%w: cannot exchange with yourself", ErrBadItems)
+	}
+	if err := s.d.Catalog.Validate(give); err != nil {
+		return err
+	}
+	if err := s.d.Catalog.Validate(want); err != nil {
+		return err
+	}
+	return s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
+		invs := make(map[string]*Inventory, 2)
+		for _, owner := range slices.Sorted(slices.Values([]string{from, to})) {
+			inv, err := s.d.Inventory.GetForUpdate(ctx, owner)
+			if err != nil {
+				return err
+			}
+			invs[owner] = inv
+		}
+		if err := invs[to].Take(want); err != nil {
+			return err
+		}
+		invs[to].Put(give)
+		invs[from].Put(want)
+		for _, owner := range slices.Sorted(maps.Keys(invs)) {
+			if err := s.d.Inventory.Save(ctx, invs[owner]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
 
 func seedOf(s string) uint64 {
 	h := fnv.New64a()

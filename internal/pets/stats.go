@@ -12,6 +12,33 @@ type Stats struct {
 	Cleanliness float64
 }
 
+const LowStatThreshold = 20.0
+
+type StatName string
+
+const (
+	StatSatiety     StatName = "satiety"
+	StatMood        StatName = "mood"
+	StatEnergy      StatName = "energy"
+	StatCleanliness StatName = "cleanliness"
+)
+
+var StatNames = []StatName{StatSatiety, StatMood, StatEnergy, StatCleanliness}
+
+func (s Stats) Get(n StatName) float64 {
+	switch n {
+	case StatSatiety:
+		return s.Satiety
+	case StatMood:
+		return s.Mood
+	case StatEnergy:
+		return s.Energy
+	case StatCleanliness:
+		return s.Cleanliness
+	}
+	return 0
+}
+
 var DecayPerHour = Stats{Satiety: 6, Mood: 4, Energy: 3, Cleanliness: 2}
 
 var InitialStats = Stats{Satiety: 80, Mood: 80, Energy: 80, Cleanliness: 80}

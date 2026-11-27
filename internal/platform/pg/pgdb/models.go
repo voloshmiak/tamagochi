@@ -31,6 +31,16 @@ type Item struct {
 	Kind string
 }
 
+type NotificationPreference struct {
+	UserID        string
+	DisabledKinds []string
+	QuietEnabled  bool
+	QuietFrom     int32
+	QuietTo       int32
+	Timezone      string
+	Lang          string
+}
+
 type Pet struct {
 	ID          string
 	OwnerID     string
@@ -51,6 +61,14 @@ type PetTrait struct {
 	Weight float64
 }
 
+type PushSubscription struct {
+	Endpoint  string
+	UserID    string
+	P256dh    string
+	Auth      string
+	CreatedAt time.Time
+}
+
 type User struct {
 	ID            string
 	Email         string
@@ -58,4 +76,11 @@ type User struct {
 	PasswordHash  []byte
 	EmailVerified bool
 	CreatedAt     time.Time
+}
+
+type UserIdentity struct {
+	Provider  string
+	Subject   string
+	UserID    string
+	CreatedAt time.Time
 }

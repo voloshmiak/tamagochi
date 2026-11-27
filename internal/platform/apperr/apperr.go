@@ -12,6 +12,7 @@ var (
 	ErrUnauthorized   = errors.New("unauthorized")
 	ErrForbidden      = errors.New("forbidden")
 	ErrTooEarly       = errors.New("too early")
+	ErrRateLimited    = errors.New("too many requests")
 	ErrNotImplemented = errors.New("not implemented yet")
 )
 

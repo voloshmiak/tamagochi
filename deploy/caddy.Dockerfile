@@ -1,6 +1,4 @@
 # syntax=docker/dockerfile:1
-# Збірка фронтенду та образ Caddy, що віддає статику й проксіює /api на бекенд.
-# Контекст збірки — корінь репозиторію.
 
 FROM node:22-alpine AS web
 WORKDIR /web

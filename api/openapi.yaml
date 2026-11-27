@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Tamagotchi API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Contract between the PWA and the Go backend (NFR-MNT-01). This file is the single
     source of truth: the Go server interface (`internal/api/oapi`) and the TypeScript
@@ -9,6 +9,9 @@ info:
     Requests are validated against it before they reach the handlers.
 
     Sessions use JWT in httpOnly cookies (`access_token`, `refresh_token`), NFR-SEC-03.
+    State-changing requests from other sites are rejected (Origin / Sec-Fetch-Site check, NFR-SEC-05).
+    Every client is limited to 60 requests per minute; 5 failed logins for an email block it
+    for 15 minutes (NFR-SEC-04). Both answer 429 with Retry-After.
 servers:
   - url: /api/v1
 security:
@@ -61,6 +64,45 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RetryLater" }
+  /auth/providers:
+    get:
+      operationId: listAuthProviders
+      tags: [auth]
+      security: []
+      summary: OAuth providers enabled on this server (FR-AUTH-02)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AuthProviders" } } } }
+  /auth/oauth/{provider}:
+    get:
+      operationId: startOAuth
+      tags: [auth]
+      security: []
+      summary: Redirect to the provider's consent page (FR-AUTH-02)
+      parameters:
+        - { $ref: "#/components/parameters/Provider" }
+      responses:
+        "302":
+          description: Redirect to the provider
+          headers:
+            Location: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/Error" }
+  /auth/oauth/{provider}/callback:
+    get:
+      operationId: oauthCallback
+      tags: [auth]
+      security: []
+      summary: Provider redirects back here; logs in or creates the account (FR-AUTH-02)
+      parameters:
+        - { $ref: "#/components/parameters/Provider" }
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "303":
+          description: Redirect to the app; `?oauth=error` or `?oauth=denied` when the login failed
+          headers:
+            Location: { schema: { type: string } }
   /auth/refresh:
     post:
       operationId: refresh
@@ -148,7 +190,71 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/RetryLater" }
 
+  /notifications/push-key:
+    get:
+      operationId: getPushKey
+      tags: [notifications]
+      summary: VAPID public key for PushManager.subscribe (FR-NOT-01)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/PushKey" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+  /notifications/subscriptions:
+    post:
+      operationId: subscribePush
+      tags: [notifications]
+      summary: Save the browser's push subscription after the player agreed (FR-NOT-01)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushSubscription" }
+      responses:
+        "204": { description: Subscribed }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: unsubscribePush
+      tags: [notifications]
+      summary: Remove the push subscription of this browser (FR-NOT-01)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushUnsubscribe" }
+      responses:
+        "204": { description: Unsubscribed }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /notifications/preferences:
+    get:
+      operationId: getNotificationPreferences
+      tags: [notifications]
+      summary: Notification kinds and quiet hours (FR-NOT-04)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/NotificationPreferences" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setNotificationPreferences
+      tags: [notifications]
+      summary: Change notification kinds and quiet hours (FR-NOT-04)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationPreferences" }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/NotificationPreferences" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
 components:
+  parameters:
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/AuthProvider" }
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: access_token }
   responses:
@@ -156,7 +262,7 @@ components:
       description: Error
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     RetryLater:
-      description: Too early (cooldown or reward already claimed); see the Retry-After header
+      description: Too early (cooldown, reward already claimed or rate limit); see the Retry-After header
       headers:
         Retry-After: { description: Seconds to wait, schema: { type: integer } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -175,14 +281,24 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 8, maxLength: 72 }
-        nickname: { type: string, minLength: 3, maxLength: 20 }
+        nickname: { type: string, minLength: 3, maxLength: 20, pattern: "^[^\\x00-\\x1f\\x7f]+$" }
     LoginRequest:
       type: object
       additionalProperties: false
       required: [email, password]
       properties:
-        email: { type: string }
-        password: { type: string }
+        email: { type: string, maxLength: 254 }
+        password: { type: string, maxLength: 72 }
+    AuthProvider:
+      type: string
+      enum: [google, github]
+    AuthProviders:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items: { $ref: "#/components/schemas/AuthProvider" }
     User:
       type: object
       required: [id, email, nickname, emailVerified, createdAt]
@@ -198,8 +314,8 @@ components:
       additionalProperties: false
       required: [name, appearance]
       properties:
-        name: { type: string, minLength: 2, maxLength: 20 }
-        appearance: { type: string, minLength: 1, maxLength: 32 }
+        name: { type: string, minLength: 2, maxLength: 20, pattern: "^[^\\x00-\\x1f\\x7f]+$" }
+        appearance: { type: string, minLength: 1, maxLength: 32, pattern: "^[A-Za-z0-9_-]+$" }
     Action:
       type: string
       enum: [feed, play, sleep, wash]
@@ -278,3 +394,56 @@ components:
       properties:
         granted: { $ref: "#/components/schemas/ItemCounts" }
         inventory: { $ref: "#/components/schemas/Inventory" }
+
+    PushKey:
+      type: object
+      required: [publicKey, enabled]
+      properties:
+        publicKey: { type: string, description: VAPID public key (base64url); empty when push is off }
+        enabled: { type: boolean }
+    PushSubscription:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string, format: uri, maxLength: 1024 }
+        expirationTime: { type: number, nullable: true }
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh: { type: string, minLength: 1, maxLength: 256 }
+            auth: { type: string, minLength: 1, maxLength: 64 }
+    PushUnsubscribe:
+      type: object
+      additionalProperties: false
+      required: [endpoint]
+      properties:
+        endpoint: { type: string, maxLength: 1024 }
+    NotificationKind:
+      type: string
+      enum: [low_stat, friend_request, trade]
+    ClockTime:
+      type: string
+      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+      example: "23:00"
+    QuietHours:
+      type: object
+      additionalProperties: false
+      required: [enabled, from, to]
+      properties:
+        enabled: { type: boolean }
+        from: { $ref: "#/components/schemas/ClockTime" }
+        to: { $ref: "#/components/schemas/ClockTime" }
+    NotificationPreferences:
+      type: object
+      additionalProperties: false
+      required: [disabled, quietHours, timezone, lang]
+      properties:
+        disabled:
+          type: array
+          description: Kinds the player turned off
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/NotificationKind" }
+        quietHours: { $ref: "#/components/schemas/QuietHours" }
+        timezone: { type: string, maxLength: 64, example: Europe/Kyiv, description: IANA time zone of the player }
+        lang: { type: string, enum: [uk, en] }

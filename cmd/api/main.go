@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/voloshmiak/tamagochi/internal/app"
 	"github.com/voloshmiak/tamagochi/internal/config"
