@@ -13,8 +13,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register with email and password (FR-AUTH-01) */
+        /** Register with email and password; sends a verification email (FR-AUTH-01) */
         post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Confirm the email address with the token from the verification email (FR-AUTH-01) */
+        get: operations["verifyEmail"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -47,7 +64,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Exchange the refresh cookie for new tokens */
+        /** Rotate the refresh cookie and issue a new access cookie (FR-AUTH-03, NFR-SEC-03) */
         post: operations["refresh"];
         delete?: never;
         options?: never;
@@ -64,7 +81,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Clear session cookies */
+        /** Revoke the refresh session and clear the cookies */
         post: operations["logout"];
         delete?: never;
         options?: never;
@@ -113,7 +130,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Pet with lazily recomputed state (FR-PET-02, FR-PET-04) */
+        /** Pet with lazily recomputed stats and its stage (FR-PET-02, FR-PET-04) */
         get: operations["getMyPet"];
         put?: never;
         post?: never;
@@ -147,10 +164,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Items of the player (FR-PET-06) */
+        /** Items of the player and the daily reward status (FR-PET-06) */
         get: operations["getInventory"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/daily-reward": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim the daily reward; available once per calendar day, UTC (FR-PET-06) */
+        post: operations["claimDailyReward"];
         delete?: never;
         options?: never;
         head?: never;
@@ -163,28 +197,53 @@ export interface components {
     schemas: {
         Error: {
             /** @example cooldown */
-            error?: string;
-            message?: string;
+            error: string;
+            message: string;
+        };
+        RegisterRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            nickname: string;
+        };
+        LoginRequest: {
+            email: string;
+            password: string;
         };
         User: {
             id: string;
             email: string;
             nickname: string;
+            emailVerified: boolean;
             /** Format: date-time */
-            createdAt?: string;
+            createdAt: string;
+        };
+        CreatePetRequest: {
+            name: string;
+            appearance: string;
         };
         /** @enum {string} */
         Action: "feed" | "play" | "sleep" | "wash";
+        ActionRequest: {
+            action: components["schemas"]["Action"];
+        };
+        /**
+         * @description Growth stage, derived from the pet's age (FR-PET-02)
+         * @enum {string}
+         */
+        Stage: "egg" | "baby" | "child" | "teen" | "adult";
+        Stats: {
+            satiety: number;
+            mood: number;
+            energy: number;
+            cleanliness: number;
+        };
         Pet: {
             id: string;
             name: string;
             appearance: string;
-            stats: {
-                satiety: number;
-                mood: number;
-                energy: number;
-                cleanliness: number;
-            };
+            stage: components["schemas"]["Stage"];
+            stats: components["schemas"]["Stats"];
             traits: {
                 [key: string]: number;
             };
@@ -193,32 +252,57 @@ export interface components {
                 [key: string]: number;
             };
             /** Format: date-time */
+            bornAt: string;
+            /** Format: date-time */
             updatedAt: string;
         };
         Reaction: {
-            event?: string;
+            event: string;
             /** @enum {string} */
-            emotion?: "happy" | "calm" | "grumpy" | "shy";
-            behavior?: string;
-            trait?: string;
+            emotion: "happy" | "calm" | "grumpy" | "shy";
+            behavior: string;
+            trait: string;
+        };
+        ActionResult: {
+            pet: components["schemas"]["Pet"];
+            points: number;
+            reaction: components["schemas"]["Reaction"];
+            usedItem?: components["schemas"]["Item"];
         };
         Item: {
-            id?: string;
-            name?: string;
+            id: string;
+            name: string;
             /** @enum {string} */
-            kind?: "food" | "toy" | "soap";
+            kind: "food" | "toy" | "soap";
         };
         ItemCounts: {
             [key: string]: number;
         };
         Inventory: {
-            items?: components["schemas"]["ItemCounts"];
+            items: components["schemas"]["ItemCounts"];
+            /** @description Seconds until the daily reward can be claimed; 0 means it is available now */
+            dailyRewardIn: number;
+        };
+        DailyReward: {
+            granted: components["schemas"]["ItemCounts"];
+            inventory: components["schemas"]["Inventory"];
         };
     };
     responses: {
         /** @description Error */
         Error: {
             headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Too early (cooldown or reward already claimed); see the Retry-After header */
+        RetryLater: {
+            headers: {
+                /** @description Seconds to wait */
+                "Retry-After"?: number;
                 [name: string]: unknown;
             };
             content: {
@@ -242,12 +326,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** Format: email */
-                    email: string;
-                    password: string;
-                    nickname: string;
-                };
+                "application/json": components["schemas"]["RegisterRequest"];
             };
         };
         responses: {
@@ -264,6 +343,27 @@ export interface operations {
             409: components["responses"]["Error"];
         };
     };
+    verifyEmail: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the app; `?verified=1` on success, `?verified=0` otherwise */
+            303: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -273,10 +373,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    email: string;
-                    password: string;
-                };
+                "application/json": components["schemas"]["LoginRequest"];
             };
         };
         responses: {
@@ -289,6 +386,7 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            400: components["responses"]["Error"];
             401: components["responses"]["Error"];
         };
     };
@@ -347,6 +445,7 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            401: components["responses"]["Error"];
         };
     };
     createPet: {
@@ -358,10 +457,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    name: string;
-                    appearance: string;
-                };
+                "application/json": components["schemas"]["CreatePetRequest"];
             };
         };
         responses: {
@@ -374,6 +470,8 @@ export interface operations {
                     "application/json": components["schemas"]["Pet"];
                 };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
             409: components["responses"]["Error"];
         };
     };
@@ -395,6 +493,7 @@ export interface operations {
                     "application/json": components["schemas"]["Pet"];
                 };
             };
+            401: components["responses"]["Error"];
             404: components["responses"]["Error"];
         };
     };
@@ -407,9 +506,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    action: components["schemas"]["Action"];
-                };
+                "application/json": components["schemas"]["ActionRequest"];
             };
         };
         responses: {
@@ -419,25 +516,22 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        pet: components["schemas"]["Pet"];
-                        points: number;
-                        reaction?: components["schemas"]["Reaction"];
-                        usedItem?: components["schemas"]["Item"];
-                    };
+                    "application/json": components["schemas"]["ActionResult"];
                 };
             };
-            409: components["responses"]["Error"];
-            /** @description Cooldown (FR-PET-05); see Retry-After header */
-            429: {
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            /** @description The action needs an item the player does not have (FR-PET-06) */
+            409: {
                 headers: {
-                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            429: components["responses"]["RetryLater"];
         };
     };
     getInventory: {
@@ -458,6 +552,29 @@ export interface operations {
                     "application/json": components["schemas"]["Inventory"];
                 };
             };
+            401: components["responses"]["Error"];
+        };
+    };
+    claimDailyReward: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reward granted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyReward"];
+                };
+            };
+            401: components["responses"]["Error"];
+            429: components["responses"]["RetryLater"];
         };
     };
 }
